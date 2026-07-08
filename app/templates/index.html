@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ZyleBot</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <aside id="sidebar">
+            <div id="sidebar-head">
+                <span class="brand">ZyleBot</span>
+                <button id="new-chat" title="New chat">+ New</button>
+            </div>
+            <ul id="conversation-list"></ul>
+        </aside>
+        <main id="main">
+            <header>
+                <span id="status" class="status">checking LM Studio...</span>
+                <span id="context-gauge" class="context-gauge" title="context window usage">
+                    <span id="context-bar-track" class="context-bar-track">
+                        <span id="context-bar-fill" class="context-bar-fill"></span>
+                    </span>
+                    <span id="context-text" class="context-text">—</span>
+                </span>
+            </header>
+            <div id="transcript"></div>
+            <form id="chat-form">
+                <input id="message-input" type="text" placeholder="Ask ZyleBot..." autocomplete="off" disabled />
+                <button type="submit" disabled>Send</button>
+            </form>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>

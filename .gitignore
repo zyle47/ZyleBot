@@ -1,0 +1,24 @@
+# Virtual environment
+venv/
+
+# Local config (contains machine-specific settings; copy from .env.example)
+.env
+
+# SQLite database + WAL sidecars
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Editor / OS cruft
+.vscode/
+.idea/
+Thumbs.db
+
+# Claude Code workspace settings (kept out of version control)
+.claude/

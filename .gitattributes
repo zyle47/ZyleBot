@@ -1,0 +1,4 @@
+# Normalize line endings: store as LF in the repo, check out OS-native.
+# This is what the "LF will be replaced by CRLF" warnings were about — harmless,
+# and this makes the behavior explicit/consistent across machines.
+* text=auto
