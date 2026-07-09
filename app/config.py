@@ -32,6 +32,18 @@ class Settings(BaseSettings):
     command_timeout_s: float = 30.0
     command_max_output_chars: int = 10_000
 
+    # --- Speech-to-text (local, via faster-whisper) ---
+    # tiny/base/small/medium/large-v3 — bigger = more accurate but slower.
+    # Downloaded from Hugging Face on first use, then cached offline in
+    # ~/.cache/huggingface.
+    whisper_model_size: str = "small"
+    # "cpu" avoids competing with LM Studio for the shared 12GB of VRAM.
+    # Set to "cuda" only if you have headroom to spare.
+    whisper_device: str = "cpu"
+    # int8 on CPU is fast and accurate enough for dictation; float16 is the
+    # usual choice if whisper_device is switched to "cuda".
+    whisper_compute_type: str = "int8"
+
     db_path: str = Field(default="data/zylebot.db", validation_alias="ZYLEBOT_DB_PATH")
 
     host: str = Field(default="127.0.0.1", validation_alias="ZYLEBOT_HOST")

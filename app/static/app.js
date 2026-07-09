@@ -2,6 +2,7 @@ const transcript = document.getElementById("transcript");
 const form = document.getElementById("chat-form");
 const input = document.getElementById("message-input");
 const sendBtn = form.querySelector("button[type=submit]");
+const micBtn = document.getElementById("mic-btn");
 const statusEl = document.getElementById("status");
 const ctxFill = document.getElementById("context-bar-fill");
 const ctxText = document.getElementById("context-text");
@@ -129,7 +130,77 @@ function addToolBlock(name, argsOrResult, label) {
 function setComposerEnabled(enabled) {
     input.disabled = !enabled;
     sendBtn.disabled = !enabled;
+    micBtn.disabled = !enabled;
 }
+
+// --- Voice input (mic -> /api/transcribe -> message input) --------------
+
+let mediaRecorder = null;
+let audioChunks = [];
+
+function isRecording() {
+    return mediaRecorder != null && mediaRecorder.state === "recording";
+}
+
+async function startRecording() {
+    let stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+        addBubble("error").textContent = "Microphone access denied or unavailable: " + err.message;
+        return;
+    }
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.addEventListener("dataavailable", (e) => {
+        if (e.data.size > 0) audioChunks.push(e.data);
+    });
+    mediaRecorder.addEventListener("stop", async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        micBtn.classList.remove("recording");
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        await transcribeAndFill(blob);
+    });
+    mediaRecorder.start();
+    micBtn.classList.add("recording");
+    micBtn.title = "Recording... click to stop";
+}
+
+function stopRecording() {
+    if (isRecording()) mediaRecorder.stop();
+}
+
+async function transcribeAndFill(blob) {
+    micBtn.disabled = true;
+    micBtn.title = "Transcribing...";
+    const formData = new FormData();
+    formData.append("audio", blob, "speech.webm");
+    try {
+        const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            addBubble("error").textContent = "Transcription failed: " + (err.detail || res.statusText);
+        } else {
+            const data = await res.json();
+            if (data.text) {
+                input.value = input.value ? input.value + " " + data.text : data.text;
+            }
+        }
+    } catch (err) {
+        addBubble("error").textContent = "Transcription request failed: " + err.message;
+    }
+    micBtn.disabled = false;
+    micBtn.title = "Speak your message";
+    input.focus();
+}
+
+micBtn.addEventListener("click", () => {
+    if (isRecording()) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
+});
 
 // --- Conversations -------------------------------------------------------
 

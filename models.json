@@ -3,8 +3,12 @@
     "alias": "Mythos True",
     "context_length": 73728
   },
-  "qwythos-9b-claude-mythos-5-1m": {
+  "qwythos-9b-claude-mythos-5-1m@q4_k_m": {
     "alias": "Mythos False",
     "context_length": 73728
+  },
+  "qwythos-9b-claude-mythos-5-1m@q8_0": {
+    "alias": "Mythos Q8",
+    "context_length": 11381
   }
 }

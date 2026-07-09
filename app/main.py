@@ -2,14 +2,15 @@ import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.requests import Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import agent_loop, db, llm_client, model_manager
+from app import agent_loop, db, llm_client, model_manager, stt
 from app.config import settings
 from app.models import ChatRequest, ConfirmRequest, ModelRequest
 from app.sse import SSEEvent
@@ -74,6 +75,20 @@ async def list_models():
     for m in models:
         m["alias"] = model_manager.get_alias(m["id"])
     return {"active": llm_client.get_active_model(), "models": models}
+
+
+@app.post("/api/transcribe")
+async def transcribe(audio: UploadFile = File(...)):
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="empty audio")
+    suffix = Path(audio.filename or "").suffix or ".webm"
+    try:
+        text = await asyncio.to_thread(stt.transcribe, audio_bytes, suffix)
+    except Exception as exc:  # noqa: BLE001 - surface as a clean 500, don't crash the app
+        logger.exception("Transcription failed")
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"text": text}
 
 
 @app.post("/api/model")

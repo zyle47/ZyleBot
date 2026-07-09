@@ -100,7 +100,7 @@ body {
     height: 100vh;
     padding: 1rem;
     min-width: 0;
-    max-width: 900px;
+    max-width: 1300px;
 }
 
 header {
@@ -280,3 +280,117 @@ button {
 }
 
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+#mic-btn {
+    padding: 0.6rem 0.8rem;
+    background: #3a3c41;
+}
+
+#mic-btn.recording {
+    background: #c0392b;
+    animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.6); }
+    50% { box-shadow: 0 0 0 6px rgba(192, 57, 43, 0); }
+}
+
+/* --- Footer (appended from footer_demo.html) --- */
+footer {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 84px;
+    margin-top: 1.25rem;
+    padding: 1.25rem 1.5rem;
+    background: #16171a;
+    border-top: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.footer-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 3rem;
+    flex-wrap: wrap;
+}
+
+.col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.brand-col h1 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}
+
+.tagline {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    margin-top: 0.1rem;
+}
+
+.col h3 {
+    margin: 0 0 0.15rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.6;
+}
+
+.footer-top a {
+    color: var(--fg);
+    text-decoration: none;
+    font-size: 0.8rem;
+    opacity: 0.75;
+    transition: color 160ms ease, opacity 160ms ease;
+}
+
+.footer-top a:hover {
+    color: #7cd992;
+    opacity: 1;
+}
+
+.running-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #7cd992;
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.footer-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.8rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.75rem;
+    opacity: 0.9;
+}
+
+.footer-bottom a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background-color 240ms ease, color 240ms ease;
+}
+
+.footer-bottom a:hover {
+    background: #2a2b2e;
+    color: var(--fg);
+}
+
+footer svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }

@@ -69,6 +69,24 @@ async def _context_event(last_usage: dict[str, Any] | None) -> SSEEvent | None:
     )
 
 
+def _fallback_from_tool_results(messages: list[dict[str, Any]]) -> str:
+    """Build a minimal reply from the most recent tool result, for the rare case
+    where the model produced no text at all. Better than a blank bubble."""
+    for msg in reversed(messages):
+        if msg.get("role") == "tool" and msg.get("content"):
+            try:
+                data = json.loads(msg["content"])
+            except (json.JSONDecodeError, TypeError):
+                return str(msg["content"])[:800]
+            if isinstance(data, dict) and data.get("error"):
+                return f"I ran into an issue: {data['error']}"
+            if isinstance(data, dict):
+                lines = "\n".join(f"- {k}: {v}" for k, v in data.items())
+                return f"Here's what I found:\n{lines}"
+            return f"Here's what I found:\n{json.dumps(data, indent=2)[:800]}"
+    return "I wasn't able to produce a response for that. Please try rephrasing."
+
+
 def _cancel_pending(conversation_id: int) -> None:
     """If a confirmation was left unanswered, resolve it as cancelled so the stored
     history stays valid (every assistant tool_call gets a following tool result)."""
@@ -138,6 +156,9 @@ async def _react_loop(conversation_id: int) -> AsyncIterator[SSEEvent]:
     loop = asyncio.get_running_loop()
 
     final_content = ""
+    # Why the forced final answer at the end runs: "max_steps" (exhausted the loop)
+    # or "empty" (a step returned no tools and no text — see the guard below).
+    force_reason = "max_steps"
     last_usage: dict[str, Any] | None = None
     # Dedup guard: identical (name, args) calls already run this loop are skipped.
     executed_calls: set[str] = set()
@@ -172,12 +193,20 @@ async def _react_loop(conversation_id: int) -> AsyncIterator[SSEEvent]:
         tool_calls = llm_client.finalize_tool_calls(tc_accumulator)
 
         if not tool_calls:
-            # No tools requested -> this is the final answer.
-            db.insert_message(conversation_id, "assistant", content_buffer)
-            yield SSEEvent("final", {"content": content_buffer, "truncated_max_steps": False})
-            async for ev in _finish(conversation_id, last_usage):
-                yield ev
-            return
+            if content_buffer.strip():
+                # No tools requested and we have text -> this is the final answer.
+                db.insert_message(conversation_id, "assistant", content_buffer)
+                yield SSEEvent("final", {"content": content_buffer, "truncated_max_steps": False})
+                async for ev in _finish(conversation_id, last_usage):
+                    yield ev
+                return
+            # No tools AND no text: the model produced nothing usable (this reasoning
+            # model sometimes never closes its <think> block, leaving `content` empty
+            # while emitting a stray "<function...>" into its reasoning). Force one
+            # clean, tool-less answer instead of emitting a blank reply that looks
+            # like a hang.
+            force_reason = "empty"
+            break
 
         # Persist the assistant message that requested the tools (in-memory OpenAI
         # format for the next step, and compact form in the DB).
@@ -248,17 +277,21 @@ async def _react_loop(conversation_id: int) -> AsyncIterator[SSEEvent]:
             db.insert_message(conversation_id, "tool", result_json, tool_call_id=tc["id"])
         # Loop again: model now sees the tool results and decides its next move.
 
-    # Circuit breaker: steps exhausted -> force ONE final answer with tools disabled.
-    messages.append(
-        {
-            "role": "system",
-            "content": (
-                "You have reached the tool-use limit for this turn. Do not request any "
-                "more tools. Answer the user now, as best you can, using the information "
-                "already gathered above."
-            ),
-        }
-    )
+    # Force ONE final answer with tools disabled. Reached either because the model
+    # hit the step limit ("max_steps") or returned an empty, tool-less step ("empty").
+    if force_reason == "empty":
+        nudge = (
+            "You have not answered the user yet. Answer now in plain text, using the "
+            "information already gathered above. Do NOT call any tools and do NOT emit "
+            "<think> or <function> tags — write only the final reply."
+        )
+    else:
+        nudge = (
+            "You have reached the tool-use limit for this turn. Do not request any "
+            "more tools. Answer the user now, as best you can, using the information "
+            "already gathered above."
+        )
+    messages.append({"role": "system", "content": nudge})
     content_buffer = ""
     try:
         async for chunk in llm_client.stream_chat_completion(messages, tools=None):
@@ -279,9 +312,16 @@ async def _react_loop(conversation_id: int) -> AsyncIterator[SSEEvent]:
         yield SSEEvent("done")
         return
 
-    final_content = content_buffer or final_content
+    final_content = content_buffer.strip() or final_content
+    if not final_content:
+        # Last-resort safety net: never show a blank bubble. Summarize the most
+        # recent tool result so the user at least sees what was gathered.
+        final_content = _fallback_from_tool_results(messages)
     db.insert_message(conversation_id, "assistant", final_content)
-    yield SSEEvent("final", {"content": final_content, "truncated_max_steps": True})
+    yield SSEEvent(
+        "final",
+        {"content": final_content, "truncated_max_steps": force_reason == "max_steps"},
+    )
     async for ev in _finish(conversation_id, last_usage):
         yield ev
 
