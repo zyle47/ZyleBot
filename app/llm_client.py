@@ -11,6 +11,20 @@ logger = logging.getLogger("zylebot.llm_client")
 
 _client: httpx.AsyncClient | None = None
 
+# The active model can be switched at runtime (via the UI). Starts at the
+# configured default; resets to it on server restart.
+_active_model: str | None = None
+
+
+def get_active_model() -> str:
+    return _active_model or settings.lmstudio_model
+
+
+def set_active_model(name: str) -> None:
+    global _active_model, _context_length_cache
+    _active_model = name
+    _context_length_cache = None  # force a re-fetch for the new model's window
+
 
 def init_client() -> None:
     global _client
@@ -45,29 +59,63 @@ def _native_api_base() -> str:
     return base.rstrip("/")
 
 
+async def _fetch_native_models() -> list[dict[str, Any]]:
+    """Raw list from LM Studio's native /api/v0/models (id, state, type, context)."""
+    if _client is None:
+        return []
+    try:
+        response = await _client.get(f"{_native_api_base()}/api/v0/models")
+        response.raise_for_status()
+        return response.json().get("data", [])
+    except (httpx.HTTPError, ValueError):
+        return []
+
+
+async def list_chat_models() -> list[dict[str, Any]]:
+    """Chat-capable models available in LM Studio (embeddings excluded), each with
+    id, state ('loaded'/'not-loaded'), and max/loaded context length."""
+    models = await _fetch_native_models()
+    return [
+        {
+            "id": m.get("id"),
+            "state": m.get("state"),
+            "loaded_context_length": m.get("loaded_context_length"),
+            "max_context_length": m.get("max_context_length"),
+        }
+        for m in models
+        if m.get("type") != "embeddings"
+    ]
+
+
+async def detect_loaded_model() -> str | None:
+    """Return the id of the currently-loaded chat model, if any. Used at startup
+    to align the active model with LM Studio's real state (no divergence)."""
+    for m in await _fetch_native_models():
+        if m.get("state") == "loaded" and m.get("type") != "embeddings":
+            return m.get("id")
+    return None
+
+
 _context_length_cache: int | None = None
 
 
 async def get_loaded_context_length(force_refresh: bool = False) -> int | None:
-    """Return the loaded model's context window size (e.g. 16384).
+    """Return the active model's loaded context window size (e.g. 16384).
 
-    Uses LM Studio's native /api/v0/models endpoint. Returns None if the server
-    isn't LM Studio or the info is unavailable (caller degrades gracefully).
+    Uses LM Studio's native /api/v0/models endpoint. Returns None if the active
+    model isn't loaded yet or the info is unavailable (caller degrades gracefully).
     """
     global _context_length_cache
     if _context_length_cache is not None and not force_refresh:
         return _context_length_cache
-    if _client is None:
-        return None
-    try:
-        response = await _client.get(f"{_native_api_base()}/api/v0/models")
-        response.raise_for_status()
-        models = response.json().get("data", [])
-    except (httpx.HTTPError, ValueError):
+
+    models = await _fetch_native_models()
+    if not models:
         return None
 
-    # Prefer the configured model; otherwise fall back to whichever is loaded.
-    chosen = next((m for m in models if m.get("id") == settings.lmstudio_model), None)
+    # Prefer the active model; otherwise fall back to whichever is loaded.
+    active = get_active_model()
+    chosen = next((m for m in models if m.get("id") == active), None)
     if chosen is None:
         chosen = next((m for m in models if m.get("state") == "loaded"), None)
     if chosen is None:
@@ -90,9 +138,10 @@ async def stream_chat_completion(
         raise RuntimeError("llm_client not initialized — call init_client() first")
 
     payload: dict[str, Any] = {
-        "model": settings.lmstudio_model,
+        "model": get_active_model(),
         "messages": messages,
         "stream": True,
+        "temperature": settings.temperature,
         # Ask LM Studio to append a final chunk carrying token usage totals.
         "stream_options": {"include_usage": True},
     }

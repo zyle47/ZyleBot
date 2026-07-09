@@ -1,0 +1,10 @@
+{
+  "huihui-qwythos-9b-claude-mythos-5-1m-abliterated": {
+    "alias": "Mythos True",
+    "context_length": 73728
+  },
+  "qwythos-9b-claude-mythos-5-1m": {
+    "alias": "Mythos False",
+    "context_length": 73728
+  }
+}

@@ -114,8 +114,18 @@ header {
 .status.ok { color: #7cd992; }
 .status.bad { color: #e07a7a; }
 
-.context-gauge {
+.model-select {
     margin-left: auto;
+    max-width: 240px;
+    background: #2a2b2e;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.25rem 0.4rem;
+    font-size: 0.75rem;
+}
+
+.context-gauge {
     display: flex;
     align-items: center;
     gap: 0.5rem;

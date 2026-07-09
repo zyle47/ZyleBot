@@ -7,6 +7,7 @@ const ctxFill = document.getElementById("context-bar-fill");
 const ctxText = document.getElementById("context-text");
 const convListEl = document.getElementById("conversation-list");
 const newChatBtn = document.getElementById("new-chat");
+const modelSelect = document.getElementById("model-select");
 
 let contextMax = null;
 let currentConversationId = null;
@@ -35,12 +36,63 @@ function updateContextGauge(used) {
     }
 }
 
+function modelLabel(m) {
+    const name = m.alias || m.id;
+    return name + (m.state === "loaded" ? " ●" : "");
+}
+
+async function loadModels() {
+    try {
+        const res = await fetch("/api/models");
+        const data = await res.json();
+        modelSelect.innerHTML = "";
+        for (const m of data.models) {
+            const opt = document.createElement("option");
+            opt.value = m.id;
+            opt.textContent = modelLabel(m);
+            if (m.id === data.active) opt.selected = true;
+            modelSelect.appendChild(opt);
+        }
+    } catch (err) {
+        /* leave the dropdown empty if LM Studio is unreachable */
+    }
+}
+
+modelSelect.addEventListener("change", async () => {
+    const model = modelSelect.value;
+    const label = modelSelect.options[modelSelect.selectedIndex].textContent.replace(" ●", "");
+    // Switching now loads the model via LM Studio (unload old + load new), which
+    // blocks ~15-30s. Lock the UI and show progress.
+    modelSelect.disabled = true;
+    setComposerEnabled(false);
+    statusEl.textContent = `loading ${label}… (this takes ~15-30s)`;
+    statusEl.className = "status";
+    try {
+        const res = await fetch("/api/model", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            addBubble("error").textContent =
+                "Failed to switch model: " + (err.detail || res.statusText);
+        }
+    } catch (err) {
+        addBubble("error").textContent = "Failed to switch model: " + err.message;
+    }
+    modelSelect.disabled = false;
+    setComposerEnabled(true);
+    await refreshHealth();
+    await loadModels();
+});
+
 async function refreshHealth() {
     try {
         const res = await fetch("/api/health");
         const data = await res.json();
         statusEl.textContent = data.lmstudio_reachable
-            ? `connected (${data.model})`
+            ? `connected (${data.model_alias || data.model})`
             : `LM Studio unreachable — start it with "lms server start"`;
         statusEl.className = "status " + (data.lmstudio_reachable ? "ok" : "bad");
         contextMax = data.context_length ?? null;
@@ -357,6 +409,7 @@ newChatBtn.addEventListener("click", newConversation);
 
 async function init() {
     await refreshHealth();
+    await loadModels();
     await loadConversationList();
     // Auto-open the most recent conversation, or start a fresh one.
     if (convListEl.children.length > 0) {

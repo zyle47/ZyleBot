@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     lmstudio_base_url: str = "http://localhost:1234/v1"
     lmstudio_model: str = "qwythos-9b-claude-mythos-5-1m"
 
+    # Sampling temperature. Lower = more consistent/repeatable (better for
+    # reliable tool selection); higher = more varied. 0.3 is a steady default.
+    temperature: float = 0.3
+
     agent_max_steps: int = 12
     agent_request_timeout_s: float = 120.0
 

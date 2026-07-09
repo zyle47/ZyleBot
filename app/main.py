@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -8,9 +9,9 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import agent_loop, db, llm_client
+from app import agent_loop, db, llm_client, model_manager
 from app.config import settings
-from app.models import ChatRequest, ConfirmRequest
+from app.models import ChatRequest, ConfirmRequest, ModelRequest
 from app.sse import SSEEvent
 
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +24,12 @@ async def lifespan(app: FastAPI):
     llm_client.init_client()
     if await llm_client.check_connectivity():
         logger.info("LM Studio reachable at %s", settings.lmstudio_base_url)
+        # Align the active model with whatever LM Studio actually has loaded, so
+        # the server never diverges from reality (or resets to a stale default).
+        loaded = await llm_client.detect_loaded_model()
+        if loaded:
+            llm_client.set_active_model(loaded)
+            logger.info("Active model synced to loaded: %s", loaded)
     else:
         logger.warning(
             "LM Studio NOT reachable at %s — start it with `lms server start` "
@@ -52,10 +59,40 @@ async def health():
     context_length = (
         await llm_client.get_loaded_context_length(force_refresh=True) if reachable else None
     )
+    active = llm_client.get_active_model()
     return {
         "lmstudio_reachable": reachable,
-        "model": settings.lmstudio_model,
+        "model": active,
+        "model_alias": model_manager.get_alias(active),
         "context_length": context_length,
+    }
+
+
+@app.get("/api/models")
+async def list_models():
+    models = await llm_client.list_chat_models()
+    for m in models:
+        m["alias"] = model_manager.get_alias(m["id"])
+    return {"active": llm_client.get_active_model(), "models": models}
+
+
+@app.post("/api/model")
+async def set_model(req: ModelRequest):
+    available = {m["id"] for m in await llm_client.list_chat_models()}
+    if req.model not in available:
+        raise HTTPException(status_code=400, detail=f"unknown model: {req.model}")
+
+    # Load it via the lms CLI: unload others (one model at a time on the GPU) and
+    # load the target at its configured context. Blocking, so run in a thread.
+    context = model_manager.get_context_length(req.model)
+    result = await asyncio.to_thread(model_manager.load_model, req.model, context)
+    if not result["ok"]:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    llm_client.set_active_model(req.model)
+    return {
+        "active": llm_client.get_active_model(),
+        "context_length": await llm_client.get_loaded_context_length(force_refresh=True),
     }
 
 

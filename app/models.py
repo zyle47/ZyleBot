@@ -7,3 +7,7 @@ class ChatRequest(BaseModel):
 
 class ConfirmRequest(BaseModel):
     approved: bool
+
+
+class ModelRequest(BaseModel):
+    model: str
