@@ -104,17 +104,48 @@ def _cancel_pending(conversation_id: int) -> None:
 
 
 async def run_agent_turn(
-    conversation_id: int, user_message: str
+    conversation_id: int, user_message: str, images: list[str] | None = None
 ) -> AsyncIterator[SSEEvent]:
     """Run one multi-step ReAct turn for a single conversation.
 
     Loads *only* this conversation's history from SQLite, streams the turn, and
-    persists every new message back under the same conversation_id.
+    persists every new message back under the same conversation_id. `images` is an
+    optional list of base64 data URLs attached to this user turn (vision models).
     """
     _cancel_pending(conversation_id)
-    db.insert_message(conversation_id, "user", user_message)
-    async for ev in _react_loop(conversation_id):
+    db.insert_message(
+        conversation_id,
+        "user",
+        user_message,
+        images_json=json.dumps(images) if images else None,
+    )
+    # This model can't see an image AND use tools in the same request, so a turn
+    # that carries an image runs in vision mode (tools disabled) — see _react_loop.
+    async for ev in _react_loop(conversation_id, vision_mode=bool(images)):
         yield ev
+
+
+def _collapse_multimodal(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Replace image parts in any multimodal message with a short text placeholder.
+
+    Used on tool-enabled turns because this model can't combine vision with
+    tool-calling (attaching `tools` makes LM Studio drop the image), and because
+    re-sending old images every turn needlessly burns vision tokens.
+    """
+    out: list[dict[str, Any]] = []
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, list):
+            texts = [p["text"] for p in content if p.get("type") == "text" and p.get("text")]
+            n_imgs = sum(1 for p in content if p.get("type") == "image_url")
+            placeholder = " ".join(texts)
+            if n_imgs:
+                tag = f"[{n_imgs} image{'s' if n_imgs > 1 else ''} attached earlier]"
+                placeholder = f"{placeholder} {tag}".strip()
+            out.append({**m, "content": placeholder})
+        else:
+            out.append(m)
+    return out
 
 
 async def resume_after_confirmation(
@@ -143,16 +174,30 @@ async def resume_after_confirmation(
         yield ev
 
 
-async def _react_loop(conversation_id: int) -> AsyncIterator[SSEEvent]:
+async def _react_loop(
+    conversation_id: int, vision_mode: bool = False
+) -> AsyncIterator[SSEEvent]:
     """The core multi-step loop. Rebuilds the model input from the DB (so it works
     for both a fresh turn and a post-confirmation resume), streams each step, and
     pauses by returning after a `confirmation_required` event when a step requests
-    a confirm_required tool."""
+    a confirm_required tool.
+
+    In `vision_mode` (the current turn carries an image) tools are disabled so the
+    model can actually see the image — this model drops images when tools are
+    attached. On normal turns, historical images are collapsed to text placeholders.
+    """
+    history = db.get_openai_messages(conversation_id)
+    if not vision_mode:
+        history = _collapse_multimodal(history)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": build_system_prompt()},
-        *db.get_openai_messages(conversation_id),
+        *history,
     ]
-    tools = get_openai_tool_schemas({RiskTier.SAFE, RiskTier.CONFIRM_REQUIRED})
+    tools = (
+        None
+        if vision_mode
+        else get_openai_tool_schemas({RiskTier.SAFE, RiskTier.CONFIRM_REQUIRED})
+    )
     loop = asyncio.get_running_loop()
 
     final_content = ""

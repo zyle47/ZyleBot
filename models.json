@@ -1,14 +1,18 @@
 {
   "huihui-qwythos-9b-claude-mythos-5-1m-abliterated": {
-    "alias": "Mythos True",
+    "alias": "Mythos 9B Abl",
     "context_length": 73728
   },
-  "qwythos-9b-claude-mythos-5-1m@q4_k_m": {
-    "alias": "Mythos False",
+  "qwythos-9b-claude-mythos-5-1m": {
+    "alias": "Mythos 9B",
     "context_length": 73728
   },
-  "qwythos-9b-claude-mythos-5-1m@q8_0": {
-    "alias": "Mythos Q8",
+  "huihui-qwen3.5-27b-claude-4.6-opus-abliterated": {
+    "alias": "Opus 4.6 27B Abl",
+    "context_length": 11381
+  },
+  "huihui-qwen3.5-9b-claude-4.6-opus-abliterated": {
+    "alias": "Opus 4.6 9B Abl",
     "context_length": 11381
   }
 }

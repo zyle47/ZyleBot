@@ -120,6 +120,9 @@ def run_command(command: str, cwd: str | None = None) -> dict[str, Any]:
             shell_argv(command),
             capture_output=True,
             text=True,
+            # Command output isn't guaranteed to match the locale codec; a
+            # strict decode would crash the reader thread mid-capture.
+            errors="replace",
             timeout=settings.command_timeout_s,
             cwd=workdir,
         )

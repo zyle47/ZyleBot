@@ -8,7 +8,7 @@ venv/
 data/*.db
 data/*.db-wal
 data/*.db-shm
-
+data/test_data/*
 # Python bytecode / caches
 __pycache__/
 *.py[cod]
@@ -20,5 +20,6 @@ __pycache__/
 .idea/
 Thumbs.db
 
-# Claude Code workspace settings (kept out of version control)
-.claude/
+# Claude Code workspace settings (kept out of version control) — except
+# subagent definitions in .claude/agents/, which ARE versioned
+.claude/*

@@ -47,6 +47,17 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 
 
+@app.middleware("http")
+async def revalidate_static(request: Request, call_next):
+    """Browsers heuristically cache /static/* (no Cache-Control from StaticFiles),
+    so JS/CSS edits kept needing a hard refresh. `no-cache` forces revalidation;
+    unchanged files still come back as cheap 304s via the ETag."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 async def index(request: Request):
     return templates.TemplateResponse(request, "index.html")
@@ -67,6 +78,34 @@ async def health():
         "model_alias": model_manager.get_alias(active),
         "context_length": context_length,
     }
+
+
+@app.post("/api/server/start")
+async def start_server():
+    """Start LM Studio's local server via the lms CLI. The button click *is* the
+    human approval, so no extra confirmation gate (same as model switching)."""
+    result = await asyncio.to_thread(model_manager.start_server)
+    # Trust reachability over CLI output: the server may need a moment to accept
+    # connections, and the CLI can misreport while bootstrapping LM Studio itself.
+    reachable = False
+    for _ in range(15):
+        if await llm_client.check_connectivity():
+            reachable = True
+            break
+        await asyncio.sleep(1)
+    if not reachable:
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("error") or "server did not become reachable",
+        )
+    # Same re-sync as startup: align the active model with what's actually loaded.
+    loaded = await llm_client.detect_loaded_model()
+    if loaded:
+        llm_client.set_active_model(loaded)
+        logger.info("LM Studio server started; active model synced to %s", loaded)
+    else:
+        logger.info("LM Studio server started; no model loaded yet")
+    return {"ok": True, "model_loaded": loaded}
 
 
 @app.get("/api/models")
@@ -170,9 +209,10 @@ async def chat(conversation_id: int, req: ChatRequest):
         raise HTTPException(status_code=404, detail="conversation not found")
     # Auto-title the conversation from its first user message.
     if not db.get_render_messages(conversation_id):
-        db.update_conversation_title(conversation_id, _title_from_message(req.message))
+        title = _title_from_message(req.message) if req.message.strip() else "📷 Image"
+        db.update_conversation_title(conversation_id, title)
     return StreamingResponse(
-        _sse_from(agent_loop.run_agent_turn(conversation_id, req.message)),
+        _sse_from(agent_loop.run_agent_turn(conversation_id, req.message, req.images)),
         media_type="text/event-stream",
     )
 

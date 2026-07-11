@@ -3,7 +3,11 @@ const form = document.getElementById("chat-form");
 const input = document.getElementById("message-input");
 const sendBtn = form.querySelector("button[type=submit]");
 const micBtn = document.getElementById("mic-btn");
+const attachBtn = document.getElementById("attach-btn");
+const fileInput = document.getElementById("file-input");
+const attachmentsEl = document.getElementById("attachments");
 const statusEl = document.getElementById("status");
+const startServerBtn = document.getElementById("start-server-btn");
 const ctxFill = document.getElementById("context-bar-fill");
 const ctxText = document.getElementById("context-text");
 const convListEl = document.getElementById("conversation-list");
@@ -11,7 +15,10 @@ const newChatBtn = document.getElementById("new-chat");
 const modelSelect = document.getElementById("model-select");
 
 let contextMax = null;
+let contextUsed = 0;
 let currentConversationId = null;
+// Base64 data URLs staged for the next send (from paste or the 📎 button).
+let pendingImages = [];
 
 // --- Context gauge -------------------------------------------------------
 
@@ -21,6 +28,7 @@ function fmtTokens(n) {
 }
 
 function updateContextGauge(used) {
+    contextUsed = used ?? 0;
     if (used == null) {
         ctxFill.style.width = "0%";
         ctxText.textContent = contextMax ? `0 / ${fmtTokens(contextMax)}` : "—";
@@ -94,15 +102,40 @@ async function refreshHealth() {
         const data = await res.json();
         statusEl.textContent = data.lmstudio_reachable
             ? `connected (${data.model_alias || data.model})`
-            : `LM Studio unreachable — start it with "lms server start"`;
+            : "LM Studio unreachable";
         statusEl.className = "status " + (data.lmstudio_reachable ? "ok" : "bad");
+        startServerBtn.hidden = data.lmstudio_reachable;
         contextMax = data.context_length ?? null;
-        updateContextGauge(0);
+        // Redraw with the last-known usage — this runs on a timer now, and
+        // resetting to 0 would wipe the gauge mid-conversation.
+        updateContextGauge(contextUsed);
     } catch (err) {
+        // ZyleBot's own backend is down — the button can't help here.
         statusEl.textContent = "health check failed";
         statusEl.className = "status bad";
+        startServerBtn.hidden = true;
     }
 }
+
+startServerBtn.addEventListener("click", async () => {
+    startServerBtn.disabled = true;
+    statusEl.textContent = "starting LM Studio server…";
+    statusEl.className = "status";
+    try {
+        const res = await fetch("/api/server/start", { method: "POST" });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            addBubble("error").textContent =
+                "Failed to start LM Studio server: " + (err.detail || res.statusText);
+        }
+    } catch (err) {
+        addBubble("error").textContent = "Failed to start LM Studio server: " + err.message;
+    }
+    startServerBtn.disabled = false;
+    // Reflect the new state: status goes green, dropdown fills with models.
+    await refreshHealth();
+    await loadModels();
+});
 
 // --- Transcript rendering helpers ---------------------------------------
 
@@ -131,6 +164,30 @@ function setComposerEnabled(enabled) {
     input.disabled = !enabled;
     sendBtn.disabled = !enabled;
     micBtn.disabled = !enabled;
+    attachBtn.disabled = !enabled;
+}
+
+// Fills a user bubble with optional image thumbnails followed by the text.
+function fillUserBubble(bubble, text, images) {
+    if (images && images.length) {
+        const strip = document.createElement("div");
+        strip.className = "bubble-images";
+        for (const url of images) {
+            const im = document.createElement("img");
+            im.src = url;
+            im.className = "bubble-img";
+            im.title = "Open full size";
+            im.addEventListener("click", () => window.open(url, "_blank"));
+            strip.appendChild(im);
+        }
+        bubble.appendChild(strip);
+    }
+    if (text) {
+        const t = document.createElement("div");
+        t.textContent = text;
+        bubble.appendChild(t);
+    }
+    transcript.scrollTop = transcript.scrollHeight;
 }
 
 // --- Voice input (mic -> /api/transcribe -> message input) --------------
@@ -202,6 +259,84 @@ micBtn.addEventListener("click", () => {
     }
 });
 
+// --- Image attachments (paste / 📎 -> preview -> send) ------------------
+
+// Downscale client-side so a pasted screenshot doesn't bloat the request, the
+// SQLite row, or the model's (small) context. JPEG keeps the payload compact.
+function downscaleImage(file, maxDim = 1024, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("could not read file"));
+        reader.onload = () => {
+            const img = new Image();
+            img.onerror = () => reject(new Error("could not decode image"));
+            img.onload = () => {
+                let { width, height } = img;
+                const scale = Math.min(1, maxDim / Math.max(width, height));
+                width = Math.round(width * scale);
+                height = Math.round(height * scale);
+                const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
+                canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL("image/jpeg", quality));
+            };
+            img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+async function addImageFile(file) {
+    if (!file || !file.type.startsWith("image/")) return;
+    try {
+        pendingImages.push(await downscaleImage(file));
+        renderAttachments();
+    } catch (err) {
+        addBubble("error").textContent = "Could not attach image: " + err.message;
+    }
+}
+
+function renderAttachments() {
+    attachmentsEl.innerHTML = "";
+    attachmentsEl.classList.toggle("has-items", pendingImages.length > 0);
+    pendingImages.forEach((url, i) => {
+        const wrap = document.createElement("div");
+        wrap.className = "attachment";
+        const im = document.createElement("img");
+        im.src = url;
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "attachment-remove";
+        rm.textContent = "×";
+        rm.title = "Remove";
+        rm.addEventListener("click", () => {
+            pendingImages.splice(i, 1);
+            renderAttachments();
+        });
+        wrap.appendChild(im);
+        wrap.appendChild(rm);
+        attachmentsEl.appendChild(wrap);
+    });
+}
+
+// Paste an image straight into the composer (like pasting into a chat with me).
+input.addEventListener("paste", (e) => {
+    const items = (e.clipboardData && e.clipboardData.items) || [];
+    for (const item of items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+            e.preventDefault();
+            addImageFile(item.getAsFile());
+        }
+    }
+});
+
+attachBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async () => {
+    for (const file of fileInput.files) await addImageFile(file);
+    fileInput.value = "";
+});
+
 // --- Conversations -------------------------------------------------------
 
 async function loadConversationList() {
@@ -242,7 +377,7 @@ function renderPastMessages(messages) {
     transcript.innerHTML = "";
     for (const msg of messages) {
         if (msg.role === "user") {
-            addBubble("user").textContent = msg.content;
+            fillUserBubble(addBubble("user"), msg.content, msg.images);
         } else if (msg.role === "assistant") {
             if (msg.content) addBubble("assistant").textContent = msg.content;
             if (msg.tool_calls) {
@@ -385,6 +520,9 @@ function makeHandlers() {
         error: (data) => {
             closeSegments();
             addBubble("error").textContent = "Error: " + data.message;
+            // The failure may be LM Studio having gone down since page load —
+            // re-check so the status (and the Start-server button) match reality.
+            refreshHealth();
         },
         done: () => {
             setComposerEnabled(true);
@@ -458,14 +596,17 @@ function renderConfirmCard(calls) {
 form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const message = input.value.trim();
-    if (!message || currentConversationId == null) return;
+    const images = pendingImages;
+    if ((!message && images.length === 0) || currentConversationId == null) return;
     const convId = currentConversationId;
     input.value = "";
+    pendingImages = [];
+    renderAttachments();
     setComposerEnabled(false);
-    addBubble("user").textContent = message;
+    fillUserBubble(addBubble("user"), message, images);
 
     try {
-        await postAndRead(`/api/conversations/${convId}/chat`, { message });
+        await postAndRead(`/api/conversations/${convId}/chat`, { message, images });
     } catch (err) {
         addBubble("error").textContent = "Connection error: " + err.message;
         setComposerEnabled(true);
@@ -491,3 +632,11 @@ async function init() {
 }
 
 init();
+
+// Poll so the header notices LM Studio going down (or coming back) without a
+// page refresh. Skipped while a model switch or server start is in flight —
+// their progress text owns the status line (the disabled control is the flag).
+setInterval(() => {
+    if (modelSelect.disabled || startServerBtn.disabled) return;
+    refreshHealth();
+}, 10000);

@@ -43,6 +43,34 @@ def _lms_path() -> str:
     return "lms"  # last resort; will error clearly if truly missing
 
 
+def start_server() -> dict[str, Any]:
+    """Start LM Studio's local API server via `lms server start` (idempotent —
+    the CLI reports success if the server is already up, and bootstraps the
+    LM Studio app headlessly if needed). Blocking — call via a thread from
+    async code. Returns {"ok": bool, "error"?: str}."""
+    lms = _lms_path()
+    try:
+        proc = subprocess.run(
+            [lms, "server", "start"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+        )
+    except FileNotFoundError:
+        return {"ok": False, "error": "the 'lms' CLI was not found (is LM Studio installed?)"}
+    except subprocess.TimeoutExpired:
+        # The CLI can block on pipes inherited by the app it spawned even after
+        # the server is up — the caller verifies real reachability regardless.
+        return {"ok": False, "error": "`lms server start` timed out"}
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "server start failed").strip()
+        return {"ok": False, "error": detail[:500]}
+    return {"ok": True}
+
+
 def load_model(model_id: str, context_length: int | None) -> dict[str, Any]:
     """Switch LM Studio to `model_id`: unload everything first (so only one model
     occupies VRAM), then load with the requested context. Blocking — call via a
@@ -50,13 +78,28 @@ def load_model(model_id: str, context_length: int | None) -> dict[str, Any]:
     lms = _lms_path()
     try:
         # Unload all so we never end up with two models on a single GPU.
+        # lms is a Node CLI and emits UTF-8; without an explicit encoding,
+        # Windows decodes with the locale codec (cp1252) and crashes on
+        # progress-bar bytes it can't map.
         subprocess.run(
-            [lms, "unload", "--all"], capture_output=True, text=True, timeout=60
+            [lms, "unload", "--all"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
         )
         cmd = [lms, "load", model_id, "--gpu", "max", "-y"]
         if context_length:
             cmd += ["-c", str(context_length)]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+        )
     except FileNotFoundError:
         return {"ok": False, "error": "the 'lms' CLI was not found (is LM Studio installed?)"}
     except subprocess.TimeoutExpired:

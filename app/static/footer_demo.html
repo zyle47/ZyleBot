@@ -1,175 +1,78 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ZyleBot — Footer Demo</title>
-  <style>
-    :root {
-      --bg: #1e1f22;
-      --fg: #e6e6e6;
-      --bubble-user: #2b6cb0;
-      --bubble-assistant: #33353a;
-      --border: #45474d;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#050807">
+    <title>ZyleBot — Footer Preview</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .demo-shell {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: clamp(1rem, 4vw, 4rem);
+        }
 
-    *, *::before, *::after { box-sizing: border-box; }
-
-    html, body {
-      height: 100%;
-      margin: 0;
-      font-family: -apple-system, Segoe UI, Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--fg);
-    }
-
-    footer {
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      min-height: 84px;
-      padding: 1rem 2rem;
-      background: #16171a;
-      border-top: 1px solid var(--border);
-    }
-
-    .footer-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 3rem;
-      flex-wrap: wrap;
-    }
-
-    .col {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-    }
-
-    .brand-col h1 {
-      margin: 0;
-      font-size: 1.2rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-
-    .tagline {
-      font-size: 0.75rem;
-      opacity: 0.8;
-      margin-top: 0.1rem;
-    }
-
-    .running-dot {
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #7cd992;
-      vertical-align: middle;
-      margin-right: 4px;
-    }
-
-    .links-col h3, .resources-col h3, .about-col h3 {
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      opacity: 0.65;
-      margin: 0;
-    }
-
-    a {
-      color: var(--fg);
-      text-decoration: none;
-      font-size: 0.85rem;
-      transition: color 240ms ease, transform 180ms ease;
-    }
-
-    a:hover {
-      color: #7cd992;
-      transform: translateY(-1px);
-    }
-
-    .footer-bottom {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 0.8rem;
-      padding-top: 0.6rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.75rem;
-      opacity: 0.9;
-    }
-
-    .footer-bottom a {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
-      border-radius: 6px;
-      transition: background-color 240ms ease, color 240ms ease;
-    }
-
-    .footer-bottom a:hover {
-      background: #2a2b2e;
-      color: var(--fg);
-    }
-
-    svg { width: 18px; height: 18px; fill: currentColor; flex-shrink: 0; }
-  </style>
+        .demo-label {
+            margin: auto 0 1.25rem;
+            color: rgba(103, 255, 183, 0.45);
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+        }
+    </style>
 </head>
 <body>
-  <footer>
-    <div class="footer-top">
-      <!-- Brand -->
-      <div class="col brand-col">
-        <h1>ZyleBot</h1>
-        <p class="tagline">Your local agentic assistant.</p>
-        <span class="running-dot"></span><span class="tagline">running locally</span>
-      </div>
+    <main class="demo-shell">
+        <p class="demo-label">ZyleBot // Footer system deck</p>
+        <footer class="system-footer">
+            <div class="footer-main">
+                <div class="footer-identity">
+                    <span class="footer-monogram" aria-hidden="true">Z</span>
+                    <div class="footer-identity-copy">
+                        <strong>ZyleBot <span>// local core</span></strong>
+                        <p>Local intelligence. Your machine. Your rules.</p>
+                        <div class="footer-principles" aria-label="Core principles">
+                            <span><i class="signal-dot"></i> Local runtime</span>
+                            <span><i aria-hidden="true">◇</i> Private by design</span>
+                            <span><i aria-hidden="true">⌁</i> Human-approved actions</span>
+                        </div>
+                    </div>
+                </div>
 
-      <!-- Product links -->
-      <nav class="col links-col">
-        <h3>Product</h3>
-        <a href="#features">Features</a>
-        <a href="#tools">Tools</a>
-        <a href="#models">Models</a>
-        <a href="#confirmations">Confirmations</a>
-      </nav>
+                <nav class="footer-link-group links-col" aria-label="Product">
+                    <h3>Product</h3>
+                    <a href="#features">Features</a>
+                    <a href="#tools">Tools</a>
+                    <a href="#models">Models</a>
+                    <a href="#confirmations">Confirmations</a>
+                </nav>
 
-      <!-- Resources links -->
-      <nav class="col resources-col">
-        <h3>Resources</h3>
-        <a href="#readme">README</a>
-        <a href="#github">GitHub</a>
-        <a href="#lmstudio">LM Studio</a>
-        <a href="#docs">Docs</a>
-      </nav>
+                <nav class="footer-link-group resources-col" aria-label="Resources">
+                    <h3>Resources</h3>
+                    <a href="#readme">README</a>
+                    <a href="#github">GitHub</a>
+                    <a href="#lmstudio">LM Studio</a>
+                    <a href="#docs">Docs</a>
+                </nav>
 
-      <!-- About links -->
-      <nav class="col about-col">
-        <h3>About</h3>
-        <a href="#privacy">Privacy</a>
-        <a href="#how-it-works">How it works</a>
-        <a href="#changelog">Changelog</a>
-      </nav>
-    </div>
+                <nav class="footer-link-group about-col" aria-label="About">
+                    <h3>About</h3>
+                    <a href="#privacy">Privacy</a>
+                    <a href="#how-it-works">How it works</a>
+                    <a href="#changelog">Changelog</a>
+                </nav>
+            </div>
 
-    <!-- Divider + bottom bar -->
-    <div class="footer-bottom">
-      <span>&copy; 2026 ZyleBot — runs on your machine.</span>
-      <nav style="display:flex; gap:8px;">
-        <a href="#globe" title="Visit the website">
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-5.5-2.5l7.5-3.25L16.5 13l-5-2.25z"/></svg>
-        </a>
-        <a href="#github" title="View on GitHub">
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 3.09 8.17 7.25 9.5.57.1.9-.2.9-.2-2.48-1.28-3.94-3.68-3.94-3.68-.33-.5-.01-.63.27-.63h.5c2.3 0 4.25 1.5 4.25 1.5s.33-.5.75-.5c.42 0 .75.3.75.3s-.25.3-.6.3-2.25-1.75-2.25-1.75S8.9 13.5 12 13.5s3.25 1.75 3.25 1.75-.45.3-.6.3c-.35 0-.6-.3-.6-.3s.35.3.8.3c.45 0 .8-.3.8-.3s.3.3.75.3c.45 0 .8-.3.8-.3s.35.2.75.2c.4 0 .75-.3.75-.3s.3.3.6.3c.3 0 .6-.3.6-.3s.1.1.1.2c0 .1-.1.2-.2.2-4.17 1.33-7.25 5.08-7.25 9.5 0 5.52 4.48 10 10 10s10-4.48 10-10c0-5.52-4.48-10-10-10z"/></svg>
-        </a>
-        <a href="#heart" title="Like ZyleBot">
-          <svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
-        </a>
-      </nav>
-    </div>
-  </footer>
+            <div class="footer-rail">
+                <span class="rail-code">SYS.2026 // ZYLE</span>
+                <span class="rail-message">Data stays on this machine</span>
+                <span class="rail-state"><i class="signal-dot"></i> Local mode</span>
+            </div>
+        </footer>
+    </main>
 </body>
 </html>

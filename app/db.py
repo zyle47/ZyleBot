@@ -51,6 +51,12 @@ def init_db() -> None:
     with _connect() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(_SCHEMA)
+        # Migration: images_json holds a JSON array of base64 data URLs attached to
+        # a (user) message, for vision-capable models. Added after initial release,
+        # so add it to pre-existing databases without a destructive rebuild.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}
+        if "images_json" not in cols:
+            conn.execute("ALTER TABLE messages ADD COLUMN images_json TEXT")
 
 
 # --- Conversations -------------------------------------------------------
@@ -133,13 +139,16 @@ def insert_message(
     tool_calls_json: str | None = None,
     tool_call_id: str | None = None,
     status: str = "complete",
+    images_json: str | None = None,
 ) -> int:
     with _connect() as conn:
         cur = conn.execute(
             "INSERT INTO messages "
-            "(conversation_id, role, content, tool_calls_json, tool_call_id, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (conversation_id, role, content, tool_calls_json, tool_call_id, status, _now()),
+            "(conversation_id, role, content, tool_calls_json, tool_call_id, status, "
+            "images_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (conversation_id, role, content, tool_calls_json, tool_call_id, status,
+             images_json, _now()),
         )
         return cur.lastrowid
 
@@ -149,7 +158,7 @@ def get_openai_messages(conversation_id: int) -> list[dict[str, Any]]:
     straight to llm_client (assistant tool_calls and tool results reconstructed)."""
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT role, content, tool_calls_json, tool_call_id "
+            "SELECT role, content, tool_calls_json, tool_call_id, images_json "
             "FROM messages WHERE conversation_id = ? ORDER BY id",
             (conversation_id,),
         ).fetchall()
@@ -184,6 +193,15 @@ def get_openai_messages(conversation_id: int) -> list[dict[str, Any]]:
                     "content": r["content"],
                 }
             )
+        elif role == "user" and r["images_json"]:
+            # Multimodal user turn: OpenAI/LM Studio expect content as an array of
+            # text + image_url parts.
+            parts: list[dict[str, Any]] = []
+            if r["content"]:
+                parts.append({"type": "text", "text": r["content"]})
+            for url in json.loads(r["images_json"]):
+                parts.append({"type": "image_url", "image_url": {"url": url}})
+            messages.append({"role": "user", "content": parts})
         else:
             messages.append({"role": role, "content": r["content"]})
     return messages
@@ -197,7 +215,7 @@ def get_render_messages(conversation_id: int) -> list[dict[str, Any]]:
     """
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT role, content, tool_calls_json, tool_call_id "
+            "SELECT role, content, tool_calls_json, tool_call_id, images_json "
             "FROM messages WHERE conversation_id = ? ORDER BY id",
             (conversation_id,),
         ).fetchall()
@@ -222,5 +240,8 @@ def get_render_messages(conversation_id: int) -> list[dict[str, Any]]:
                 result = r["content"]
             items.append({"role": "tool", "tool_call_id": r["tool_call_id"], "result": result})
         else:
-            items.append({"role": role, "content": r["content"] or ""})
+            item: dict[str, Any] = {"role": role, "content": r["content"] or ""}
+            if role == "user" and r["images_json"]:
+                item["images"] = json.loads(r["images_json"])
+            items.append(item)
     return items
