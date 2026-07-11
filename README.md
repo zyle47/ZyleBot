@@ -1,37 +1,75 @@
 # ZyleBot
 
-A local, Windows-only agentic chat assistant. It talks to a locally-hosted LLM via
-[LM Studio](https://lmstudio.ai/) and can call tools to inspect your system, search the
-web, read pages, check the weather, and — with your explicit approval — write files and
-run PowerShell commands. Single-page web UI, per-conversation memory, everything runs on
-your machine.
+> **Local intelligence. Your machine. Your rules.**
 
-Built with FastAPI + a small multi-step ReAct agent loop. No cloud, no API keys required
-(default web search uses DuckDuckGo; weather uses Open-Meteo — both keyless).
+ZyleBot is a local-first, agentic chat app that connects a lightweight FastAPI backend
+to an LLM served by [LM Studio](https://lmstudio.ai/). It can reason through multi-step
+tasks, inspect files and system information, search and read the web, check weather,
+switch local models, and propose actions on your machine—all from a streaming web UI.
+
+**Local inference** · **Persistent conversations** · **Human-approved actions** ·
+**No frontend build step**
+
+[Quick start](#quick-start) · [Tool arsenal](#tool-arsenal) ·
+[How it works](#how-it-works) · [Configuration](#configuration) ·
+[Privacy](#privacy-and-network-access) · [Limitations](#limitations)
 
 ---
 
-## Prerequisites
+## Highlights
 
-- **Windows, macOS, or Linux.** ZyleBot detects the OS and uses the native shell for
-  `run_command` (PowerShell on Windows, `$SHELL`/bash on macOS/Linux); all other tools use
-  cross-platform `pathlib`/`psutil`.
-- **Python 3.14.**
-- **LM Studio** installed, with at least one chat model downloaded. The default model is
-  `qwythos-9b-claude-mythos-5-1m`; any tool-calling-capable model works (set it in `.env`).
+| Capability | What it gives you |
+|---|---|
+| **Multi-step agent loop** | The model can reason, call a tool, inspect the result, correct course, and continue until it can answer. |
+| **Visible execution** | Reasoning, tool activity, approval requests, and the final answer stream into the conversation as they happen. |
+| **Local model control** | LM Studio provides inference; ZyleBot can detect the loaded model, show its context window, and switch configured models. |
+| **Human authority** | File changes pause for approval. Shell commands are classified as allowed, approval-required, or blocked before execution. |
+| **Persistent memory** | Conversations and messages live in a local SQLite database and survive restarts. |
+| **Voice and vision** | Dictate with local `faster-whisper`, or attach an image for a dedicated vision turn. |
+| **Cross-platform shell** | PowerShell is used on Windows; macOS and Linux use the configured `$SHELL` with a bash fallback. |
 
-## Setup
+ZyleBot is Windows-first and primarily tested there, but its application and tool paths
+support Windows, macOS, and Linux.
 
-**Windows (PowerShell):**
+## Architecture at a glance
 
-```powershell
-# from the project root (F:\local_mythos)
-py -3.14 -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-copy .env.example .env      # create your local config from the template
+```text
+Browser UI
+   │  JSON requests + streamed SSE events
+   ▼
+FastAPI application
+   ├── Agent loop ─────────────── LM Studio / local LLM
+   ├── Tool registry ──────────── Filesystem, system, web, weather, shell
+   ├── Conversation store ─────── SQLite
+   └── Speech transcription ───── faster-whisper (local CPU by default)
 ```
 
-**macOS / Linux:**
+The browser is a vanilla HTML/CSS/JavaScript client. There is no Node.js dependency or
+frontend compilation step.
+
+## Quick start
+
+### 1. Prerequisites
+
+- **Windows, macOS, or Linux** (Windows is the primary development platform).
+- **Python 3.14**.
+- **LM Studio**, with at least one tool-calling-capable chat model downloaded.
+- The `lms` CLI on `PATH` if you want to use ZyleBot's in-app server-start and model-switch controls.
+
+The configured default model is `qwythos-9b-claude-mythos-5-1m`, but ZyleBot can work
+with another model that reliably emits OpenAI-compatible tool calls.
+
+### 2. Install
+
+**Windows / PowerShell**
+
+```powershell
+py -3.14 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+**macOS / Linux**
 
 ```bash
 python3.14 -m venv venv
@@ -39,93 +77,192 @@ python3.14 -m venv venv
 cp .env.example .env
 ```
 
-Edit `.env` if you want (model name, your name, timeouts, etc.). All keys have sensible
-defaults and are documented in `.env.example`.
+The defaults work as-is for a standard LM Studio server on `localhost:1234`. Edit `.env`
+when you want a different model, user name, database location, timeout, or tool limit.
 
-## Start LM Studio's server
+### 3. Prepare LM Studio
 
-ZyleBot needs LM Studio's OpenAI-compatible server running with a model loaded:
+Start LM Studio's OpenAI-compatible local server and load a chat model. You can do this
+from **Developer → Local Server** in LM Studio or with its CLI:
 
-1. Open LM Studio → **Developer / Local Server** tab → **Start Server** (default port `1234`).
-2. Load your model. **Recommended load settings for a 12 GB GPU (e.g. RTX 3080 Ti):**
-   - **GPU offload:** max (all layers)
-   - **Context length:** `65536` (64k) — fits fully in 12 GB VRAM; higher spills into slow
-     shared memory. Watch Task Manager → GPU → *Shared GPU memory* stays ~0.
-   - **Flash Attention:** on
+```powershell
+lms server start
+lms load <model-id>
+```
 
-   (CLI equivalent: `lms server start`, then load via the app or `lms load <model>`.)
+Recommended starting point for a 12 GB GPU:
 
-ZyleBot auto-detects the loaded context-window size and shows it in the header gauge.
+- **GPU offload:** maximum / all layers
+- **Context length:** `65536` (64k)
+- **Flash Attention:** on
 
-## Run ZyleBot
+Longer contexts may spill into shared GPU memory and become much slower. ZyleBot reads
+the loaded context-window size and displays live usage in the header gauge.
+
+### 4. Run ZyleBot
 
 ```powershell
 .\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Open **http://127.0.0.1:8000**. The raw API is browsable at **/docs**.
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). FastAPI's interactive API
+reference is available at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
----
+If LM Studio is unreachable after the web app opens, the header exposes a **Start
+server** control that runs `lms server start`. A model still needs to be available to
+answer chat requests.
 
-## Tools
+## Tool arsenal
 
-**Read-only (run automatically):**
+### Read-only tools
 
-| Tool | Purpose |
-|---|---|
-| `list_directory` | List a folder's contents |
-| `read_file` | Read a text file (paginated for long files) |
-| `search_files` | Recursive glob search |
-| `get_file_info` | File/folder metadata |
-| `get_system_info` | OS / CPU / RAM / disk usage |
-| `web_search` | Web search (DuckDuckGo, no key) |
-| `fetch_url` | Download + extract a page's readable text (paginated via `offset`) |
-| `get_weather` | Current weather by place name (Open-Meteo, no key) |
-
-**Actions (require your approval in the UI — the `confirm_required` tier):**
+These run automatically so the agent can gather evidence without interrupting the turn.
 
 | Tool | Purpose |
 |---|---|
-| `write_file` | Create/overwrite a text file |
-| `append_file` | Append to a file |
-| `make_directory` | Create a directory |
-| `run_command` | Run a PowerShell command (full system access) |
+| `list_directory` | List a folder's contents with basic metadata. |
+| `read_file` | Read a text file up to the configured byte limit, with best-effort UTF-8 decoding. |
+| `search_files` | Find files recursively with a glob pattern. |
+| `get_file_info` | Inspect file or folder metadata. |
+| `get_system_info` | Report OS, CPU, memory, and per-drive disk usage. |
+| `web_search` | Search the web through DuckDuckGo by default. |
+| `fetch_url` | Download and extract readable page text in offset-based chunks. |
+| `get_weather` | Resolve a place and return current Open-Meteo conditions. |
 
-When the model wants to run an action tool, the turn **pauses** and an Approve / Deny card
-appears showing the exact tool and arguments. Nothing runs until you approve. Read-only
-tools never prompt.
+### File actions
 
----
+These always pause the agent loop and show their exact arguments in an **Approve / Deny**
+card before anything changes.
+
+| Tool | Purpose |
+|---|---|
+| `write_file` | Create or overwrite a UTF-8 text file. |
+| `append_file` | Append UTF-8 text, creating the file when needed. |
+| `make_directory` | Create a directory and any missing parents. |
+
+### Guarded shell commands
+
+`run_command` uses PowerShell on Windows and the native configured shell on macOS/Linux.
+Every proposed command is classified before it can run:
+
+| Verdict | Behaviour |
+|---|---|
+| **Allow** | A narrow set of recognized read-only commands can run automatically. |
+| **Confirm** | Anything not proven read-only pauses for explicit approval. |
+| **Block** | Clearly dangerous operations—such as destructive deletion, formatting, elevation, encoded execution, and nested shells—are refused without an override. |
+
+The command guard is a fail-closed safety layer, not a security sandbox. An approved
+command runs with the same operating-system privileges as the ZyleBot process, so only
+approve a command you would run yourself.
 
 ## How it works
 
-- **Per-conversation memory.** Each chat is its own isolated brain, stored in SQLite
-  (`data/zylebot.db`); history survives restarts. Starting a new chat = a blank brain.
-  The only globally-shared fact is your name (`USER_NAME` in `.env`).
-- **Stateless LLM.** LM Studio holds no conversation state — ZyleBot sends the relevant
-  chat's full history on each request. The header gauge shows real token usage vs the
-  loaded context window.
-- **Multi-step agent loop.** The model can chain tool calls (search → fetch → answer),
-  up to `AGENT_MAX_STEPS`. If it hits the cap it's forced to answer from what it gathered,
-  and identical repeat tool calls are skipped.
+1. **You send a message.** The browser posts it to the local FastAPI app.
+2. **ZyleBot rebuilds the context.** The selected conversation's saved messages are sent
+   to the active LM Studio model; LM Studio itself remains stateless.
+3. **The model answers or requests a tool.** Tool requests use validated names and
+   structured arguments from ZyleBot's registry.
+4. **ZyleBot enforces the boundary.** Read-only work can continue, consequential actions
+   pause for approval, and blocked shell commands are refused.
+5. **The result returns to the model.** It can use the evidence, call another tool,
+   change direction, or finish.
+6. **The browser receives a live stream.** Reasoning, tool events, approval cards, and
+   answer text arrive over server-sent events.
+7. **The conversation is saved.** SQLite keeps each conversation independent and restores
+   it after a restart.
 
-## Configuration (`.env`)
+The loop stops after `AGENT_MAX_STEPS` tool rounds. Repeated identical calls are skipped,
+and reaching the ceiling forces a final answer from the evidence already gathered.
 
-Key settings (see `.env.example` for the full list):
+## Model control
 
-- `LMSTUDIO_MODEL` — which loaded model to use (switch models here, no code change).
-- `USER_NAME` — the one fact injected into every chat's system prompt.
-- `AGENT_MAX_STEPS` — max tool-calling steps per turn (default 12).
-- `SEARCH_PROVIDER` — `duckduckgo` (default, no key). Brave/Tavily reserved for later.
-- `COMMAND_TIMEOUT_S` / `COMMAND_MAX_OUTPUT_CHARS` — `run_command` limits.
-- `TOOL_MAX_FETCH_CHARS` — per-chunk cap on fetched page text.
+`models.json` maps LM Studio model IDs to friendly aliases and preferred context lengths.
+The file is read fresh when model data is requested, so aliases and context settings can
+be adjusted without changing application code.
 
-## Notes & limitations
+At startup, ZyleBot checks what LM Studio actually has loaded and aligns its active model
+to that runtime state. Switching from the header unloads the current model first so a
+single-GPU machine does not accidentally hold two models in VRAM.
 
-- **Some sites block scraping.** `fetch_url` works on many sites (BBC, docs, blogs) but
-  bot-protected/JS-heavy sites (ESPN, Wikipedia, Reuters) return errors — the model falls
-  back to search snippets or other sources. No headless browser (a possible future add).
-- **`run_command` is powerful.** It runs arbitrary shell commands with your privileges
-  (PowerShell on Windows, bash/`$SHELL` on macOS/Linux). The approval gate is the safety —
-  only approve what you'd run yourself.
-- Cross-platform (Windows/macOS/Linux); developed and most tested on Windows.
+## Configuration
+
+Copy `.env.example` to `.env`; the local file is intentionally ignored by Git. The most
+useful settings are:
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio's OpenAI-compatible API base. |
+| `LMSTUDIO_MODEL` | `qwythos-9b-claude-mythos-5-1m` | Fallback model ID before runtime detection. |
+| `TEMPERATURE` | `0.3` | Sampling temperature; lower is steadier for tool selection. |
+| `AGENT_MAX_STEPS` | `12` | Maximum tool-calling rounds in one turn. |
+| `AGENT_REQUEST_TIMEOUT_S` | `120` | Timeout for one LM Studio request. |
+| `USER_NAME` | empty | Optional fact injected into every conversation's system prompt. |
+| `ZYLEBOT_DB_PATH` | `data/zylebot.db` | SQLite database location. |
+| `SEARCH_PROVIDER` | `duckduckgo` | Web-search backend; DuckDuckGo needs no API key. |
+| `TOOL_MAX_FETCH_CHARS` | `8000` | Maximum characters returned per fetched-page chunk. |
+| `COMMAND_TIMEOUT_S` | `30` | Maximum shell-command runtime. |
+| `COMMAND_MAX_OUTPUT_CHARS` | `10000` | Maximum command output returned to the model. |
+| `WHISPER_MODEL_SIZE` | `small` | Local speech-recognition model size. |
+| `WHISPER_DEVICE` | `cpu` | Keeps transcription from competing with the LLM for VRAM. |
+
+See [`.env.example`](.env.example) for the complete, commented list.
+
+## Privacy and network access
+
+The model inference, agent loop, conversation database, file tools, and default speech
+transcription run on your machine. ZyleBot does not require a hosted inference account or
+an API key for its default search and weather providers.
+
+Features that inherently need the internet still make outbound requests:
+
+- `web_search` contacts the configured search provider.
+- `fetch_url` contacts the page you ask it to read.
+- `get_weather` uses Open-Meteo's geocoding and forecast APIs.
+- `faster-whisper` downloads its selected model from Hugging Face on first use, then uses
+  the local cache.
+- LM Studio handles any model downloads you initiate there.
+
+Conversation data stays in the configured SQLite file unless you explicitly use a tool
+or command to send it elsewhere.
+
+## Project map
+
+```text
+app/
+├── main.py             FastAPI lifecycle and JSON/SSE API routes
+├── pages.py            HTML page routes
+├── agent_loop.py       Multi-step tool loop and approval pause/resume
+├── llm_client.py       LM Studio protocol boundary
+├── model_manager.py    LM Studio CLI model/server control
+├── command_guard.py    Allow / confirm / block command classifier
+├── db.py               SQLite persistence and migrations
+├── tools/              Registered read-only and action tools
+├── templates/          Jinja chat shell and content pages
+└── static/             Vanilla JavaScript and CSS
+models.json             Model aliases and preferred context lengths
+.env.example            Documented configuration template
+```
+
+## Limitations
+
+- **Vision and tools are separate.** The current LM Studio stack drops image input when
+  tools are attached, so image turns intentionally run without the tool registry.
+- **Some sites resist extraction.** Bot-protected or JavaScript-heavy pages can reject
+  `fetch_url`; the agent may fall back to search snippets or another source.
+- **The shell is not sandboxed.** The guard blocks known-dangerous patterns and approval
+  controls authority, but an approved command still runs as your user.
+- **Large contexts cost memory.** On a 12 GB GPU, going much beyond roughly 64k tokens can
+  spill into shared memory and slow inference sharply.
+- **Windows gets the most testing.** macOS and Linux paths are supported but less heavily
+  exercised.
+
+## Development checks
+
+Run the current standard-library test suite with:
+
+```powershell
+.\venv\Scripts\python.exe -m unittest discover -s app/tests -v
+```
+
+HTML and CSS changes need only a browser refresh; static assets are served with
+revalidation enabled, so there is no frontend build step.

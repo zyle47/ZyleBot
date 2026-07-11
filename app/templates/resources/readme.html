@@ -1,0 +1,329 @@
+{% extends "page.html" %}
+
+{% block title %}README — ZyleBot{% endblock %}
+
+{% block page_content %}
+    <section class="page-hero">
+        <p class="page-kicker">RESOURCES // 01 // START HERE</p>
+        <h1>README</h1>
+        <p class="page-hero-line">Everything you need to bring your local agent online.</p>
+        <p class="page-lede">
+            Install ZyleBot, connect it to LM Studio, understand the agent loop, and know
+            exactly where your authority begins. This guide mirrors the project README in
+            the same system-deck language as the rest of the site.
+        </p>
+        <div class="page-signal-row" aria-label="README highlights">
+            <span>Local inference</span>
+            <span>Cross-platform shell</span>
+            <span>Persistent memory</span>
+            <span>No frontend build</span>
+        </div>
+    </section>
+
+    <nav class="readme-nav" aria-label="README contents">
+        <a href="#quick-start"><span>01</span> Quick start</a>
+        <a href="#tools"><span>02</span> Tool arsenal</a>
+        <a href="#flow"><span>03</span> System flow</a>
+        <a href="#configuration"><span>04</span> Configuration</a>
+        <a href="#privacy"><span>05</span> Privacy</a>
+        <a href="#limitations"><span>06</span> Limitations</a>
+    </nav>
+
+    <section class="page-intro">
+        <p class="page-kicker">THE SHORT VERSION</p>
+        <h2>Local models become useful when they can check reality.</h2>
+        <p>
+            ZyleBot is a local-first agentic chat app: a vanilla browser interface talks to
+            FastAPI, FastAPI talks to the model loaded in LM Studio, and a small registered
+            toolset lets that model inspect files, query the system, use the web, and propose
+            controlled actions.
+        </p>
+        <p>
+            Inference, conversations, file access, and speech transcription stay on your
+            machine. Web search, page fetching, and weather contact external services only
+            when you use them. No hosted inference account or default-provider API key is required.
+        </p>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">WHAT YOU GET</p>
+            <h2>More than a one-shot chat window.</h2>
+            <ul class="check-list">
+                <li><strong>Agent loop</strong> Reason, act, observe, and correct course.</li>
+                <li><strong>Live execution</strong> Stream reasoning, tools, approvals, and answers.</li>
+                <li><strong>Local model control</strong> Detect, label, monitor, and switch LM Studio models.</li>
+                <li><strong>Durable context</strong> Keep independent conversations in SQLite.</li>
+                <li><strong>Voice + vision</strong> Dictate locally or attach an image for inspection.</li>
+            </ul>
+        </article>
+
+        <article class="page-section page-section--accent">
+            <p class="section-label">SYSTEM MAP</p>
+            <h2>Small pieces. Explicit boundaries.</h2>
+            <pre class="system-diagram" aria-label="ZyleBot architecture diagram">Browser UI
+   │  JSON + streamed SSE
+   ▼
+FastAPI
+   ├── Agent loop ───── LM Studio / local LLM
+   ├── Tool registry ── Files · System · Web · Shell
+   ├── Memory ───────── SQLite
+   └── Voice ────────── faster-whisper</pre>
+        </article>
+    </section>
+
+    <section class="page-section" id="quick-start">
+        <p class="section-label">QUICK START // 01</p>
+        <h2>Install the app.</h2>
+        <div class="capability-grid">
+            <article>
+                <span class="capability-code">RUNTIME</span>
+                <h3>Python 3.14</h3>
+                <p>Use an isolated virtual environment for the pinned dependencies.</p>
+            </article>
+            <article>
+                <span class="capability-code">INFERENCE</span>
+                <h3>LM Studio</h3>
+                <p>Download a chat model that reliably emits OpenAI-compatible tool calls.</p>
+            </article>
+            <article>
+                <span class="capability-code">PLATFORM</span>
+                <h3>Windows / macOS / Linux</h3>
+                <p>Windows is the primary test target; native shell paths exist for all three.</p>
+            </article>
+        </div>
+
+        <div class="command-grid">
+            <div class="command-block">
+                <div class="command-label">Windows // PowerShell</div>
+                <pre><code>py -3.14 -m venv venv
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env</code></pre>
+            </div>
+            <div class="command-block">
+                <div class="command-label">macOS / Linux</div>
+                <pre><code>python3.14 -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env</code></pre>
+            </div>
+        </div>
+        <p>
+            The copied <code>.env</code> works with LM Studio's standard local endpoint at
+            <code>localhost:1234</code>. Change it only when you need a different model, user
+            name, timeout, database path, or tool limit.
+        </p>
+    </section>
+
+    <section class="page-section page-section--accent">
+        <p class="section-label">QUICK START // 02</p>
+        <h2>Load a model and start the local server.</h2>
+        <p>
+            Use LM Studio's <strong>Developer → Local Server</strong> screen, or its CLI. The
+            in-app start control also calls <code>lms server start</code> when the backend can
+            reach the CLI but cannot reach the server.
+        </p>
+        <div class="command-block command-block--wide">
+            <div class="command-label">LM Studio CLI</div>
+            <pre><code>lms server start
+lms load &lt;model-id&gt;</code></pre>
+        </div>
+        <div class="control-grid">
+            <article><span class="control-state control-state--green">GPU</span><h3>Maximum offload</h3><p>Keep all model layers on the GPU when memory allows.</p></article>
+            <article><span class="control-state control-state--pink">CONTEXT</span><h3>Start at 65,536</h3><p>A practical 64k target for a 12 GB card before shared-memory spill.</p></article>
+            <article><span class="control-state control-state--amber">ATTENTION</span><h3>Flash Attention on</h3><p>Use LM Studio's optimized attention path when the model supports it.</p></article>
+        </div>
+        <p>
+            ZyleBot detects the loaded context-window size and turns it into the live usage
+            gauge in the header. If model memory spills into shared GPU memory, inference can
+            slow down sharply.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <p class="section-label">QUICK START // 03</p>
+        <h2>Run the FastAPI app.</h2>
+        <div class="command-block command-block--wide">
+            <div class="command-label">Project root // PowerShell</div>
+            <pre><code>.\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload</code></pre>
+        </div>
+        <p>
+            Open <a href="http://127.0.0.1:8000">127.0.0.1:8000</a>. The interactive API
+            reference lives at <a href="http://127.0.0.1:8000/docs">/docs</a>. There is no
+            Node.js dependency or frontend build command—HTML and CSS changes need only a refresh.
+        </p>
+    </section>
+
+    <section class="page-section" id="tools">
+        <p class="section-label">TOOL ARSENAL // SAFE TIER</p>
+        <h2>Read-only evidence gathering runs automatically.</h2>
+        <p>
+            These tools let the model inspect reality without intentionally changing local state.
+            The loop can chain them without stopping for an approval card.
+        </p>
+        <div class="readme-table-wrap">
+            <table class="readme-table">
+                <thead><tr><th scope="col">Tool</th><th scope="col">Purpose</th></tr></thead>
+                <tbody>
+                    <tr><td><code>list_directory</code></td><td>List a folder's contents with basic metadata.</td></tr>
+                    <tr><td><code>read_file</code></td><td>Read a text file up to the configured byte limit, with best-effort UTF-8 decoding.</td></tr>
+                    <tr><td><code>search_files</code></td><td>Find files recursively with a glob pattern.</td></tr>
+                    <tr><td><code>get_file_info</code></td><td>Inspect file or folder metadata.</td></tr>
+                    <tr><td><code>get_system_info</code></td><td>Report OS, CPU, memory, and per-drive disk usage.</td></tr>
+                    <tr><td><code>web_search</code></td><td>Search through DuckDuckGo by default.</td></tr>
+                    <tr><td><code>fetch_url</code></td><td>Extract readable page text in offset-based chunks.</td></tr>
+                    <tr><td><code>get_weather</code></td><td>Resolve a place and return current Open-Meteo conditions.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="page-section page-section--warning">
+        <p class="section-label">TOOL ARSENAL // CONTROLLED ACTIONS</p>
+        <h2>Changes require authority. Shell commands require classification.</h2>
+        <div class="action-list">
+            <div><code>write_file</code><span>Create or overwrite a UTF-8 text file after approval.</span></div>
+            <div><code>append_file</code><span>Append text, creating the file when needed, after approval.</span></div>
+            <div><code>make_directory</code><span>Create a directory and missing parents after approval.</span></div>
+            <div><code>run_command</code><span>Invoke PowerShell on Windows or the configured shell on macOS/Linux, subject to the command guard.</span></div>
+        </div>
+        <div class="control-grid">
+            <article><span class="control-state control-state--green">ALLOW</span><h3>Known read-only</h3><p>A narrow allowlist can continue without interrupting the turn.</p></article>
+            <article><span class="control-state control-state--amber">CONFIRM</span><h3>Not proven safe</h3><p>The exact command pauses in an Approve / Deny card.</p></article>
+            <article><span class="control-state control-state--danger">BLOCK</span><h3>Clearly dangerous</h3><p>Destructive, elevated, encoded, or nested-shell patterns are refused.</p></article>
+        </div>
+        <p class="readme-note">
+            The command guard is a fail-closed safety layer, not a sandbox. An approved command
+            runs with the ZyleBot process's operating-system privileges—approve only what you
+            would run yourself.
+        </p>
+    </section>
+
+    <section class="page-section page-section--accent" id="flow">
+        <p class="section-label">HOW IT WORKS // ONE MESSAGE</p>
+        <h2>From request to grounded answer.</h2>
+        <ol class="process-list">
+            <li><strong>You send a message</strong><span>The browser posts text and, when attached, an image to the local FastAPI server.</span></li>
+            <li><strong>ZyleBot rebuilds the context</strong><span>That conversation's saved messages go to the model loaded in LM Studio.</span></li>
+            <li><strong>The model answers or requests a tool</strong><span>Tool requests use registered names and validated structured arguments.</span></li>
+            <li><strong>The boundary is enforced</strong><span>Read-only work continues, consequential action pauses, and blocked commands are refused.</span></li>
+            <li><strong>Evidence returns to the model</strong><span>It can continue, correct course, choose another tool, or finish.</span></li>
+            <li><strong>The browser receives a live stream</strong><span>Reasoning, tool events, approval cards, and answer text arrive over SSE.</span></li>
+            <li><strong>The conversation is saved</strong><span>SQLite keeps it independent and restores it after a restart.</span></li>
+        </ol>
+        <p>
+            The loop stops after <code>AGENT_MAX_STEPS</code> tool rounds. Repeated identical
+            calls are skipped, and reaching the ceiling forces an answer from the evidence
+            already gathered.
+        </p>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">MODEL CONTROL</p>
+            <h2>Runtime state wins over stale configuration.</h2>
+            <p>
+                <code>models.json</code> maps LM Studio IDs to friendly aliases and preferred
+                context lengths. ZyleBot reads it fresh and aligns itself to the model LM Studio
+                actually has loaded at startup.
+            </p>
+            <p>
+                A switch from the header unloads the current model first, keeping a single-GPU
+                machine from accidentally holding two models in VRAM.
+            </p>
+        </article>
+        <article class="page-section">
+            <p class="section-label">MEMORY</p>
+            <h2>The app remembers; the model stays stateless.</h2>
+            <p>
+                Conversations and messages live in <code>data/zylebot.db</code> by default.
+                Starting a new chat creates a clean context; reopening one rebuilds its history.
+            </p>
+            <p>
+                The optional <code>USER_NAME</code> value is the only fact intentionally shared
+                across every conversation.
+            </p>
+        </article>
+    </section>
+
+    <section class="page-section" id="configuration">
+        <p class="section-label">CONFIGURATION // .ENV</p>
+        <h2>Sensible defaults, explicit overrides.</h2>
+        <p>
+            Copy <code>.env.example</code> to <code>.env</code>. The local file is ignored by Git
+            and may hold machine-specific settings. The complete commented list remains in the template.
+        </p>
+        <div class="readme-table-wrap">
+            <table class="readme-table">
+                <thead><tr><th scope="col">Variable</th><th scope="col">Default</th><th scope="col">Purpose</th></tr></thead>
+                <tbody>
+                    <tr><td><code>LMSTUDIO_BASE_URL</code></td><td><code>localhost:1234/v1</code></td><td>OpenAI-compatible LM Studio API base.</td></tr>
+                    <tr><td><code>LMSTUDIO_MODEL</code></td><td><code>qwythos-9b-...</code></td><td>Fallback model ID before runtime detection.</td></tr>
+                    <tr><td><code>TEMPERATURE</code></td><td><code>0.3</code></td><td>Sampling temperature; lower is steadier for tool selection.</td></tr>
+                    <tr><td><code>AGENT_MAX_STEPS</code></td><td><code>12</code></td><td>Maximum tool-calling rounds in one turn.</td></tr>
+                    <tr><td><code>USER_NAME</code></td><td>empty</td><td>Optional fact injected into every conversation.</td></tr>
+                    <tr><td><code>ZYLEBOT_DB_PATH</code></td><td><code>data/zylebot.db</code></td><td>SQLite database location.</td></tr>
+                    <tr><td><code>SEARCH_PROVIDER</code></td><td><code>duckduckgo</code></td><td>Keyless default web-search backend.</td></tr>
+                    <tr><td><code>TOOL_MAX_FETCH_CHARS</code></td><td><code>8000</code></td><td>Maximum characters in one fetched-page chunk.</td></tr>
+                    <tr><td><code>COMMAND_TIMEOUT_S</code></td><td><code>30</code></td><td>Maximum shell-command runtime in seconds.</td></tr>
+                    <tr><td><code>WHISPER_DEVICE</code></td><td><code>cpu</code></td><td>Keeps transcription from competing with the LLM for VRAM.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section" id="privacy">
+            <p class="section-label">PRIVACY + NETWORK</p>
+            <h2>Local-first, stated precisely.</h2>
+            <p>
+                Inference, the agent loop, stored conversations, file tools, and default speech
+                transcription run locally. ZyleBot needs no hosted-inference account.
+            </p>
+            <ul class="check-list">
+                <li><strong>Search</strong> contacts the configured provider.</li>
+                <li><strong>Fetch</strong> contacts the requested page.</li>
+                <li><strong>Weather</strong> contacts Open-Meteo.</li>
+                <li><strong>First voice use</strong> downloads the selected Whisper model, then uses its cache.</li>
+            </ul>
+        </article>
+        <article class="page-section" id="limitations">
+            <p class="section-label">KNOWN LIMITS</p>
+            <h2>Boundaries worth knowing.</h2>
+            <ul class="check-list">
+                <li><strong>Vision</strong> runs without tools because the current stack drops images when tools are attached.</li>
+                <li><strong>Web extraction</strong> can fail on bot-protected or JavaScript-heavy sites.</li>
+                <li><strong>Shell execution</strong> is controlled but not sandboxed.</li>
+                <li><strong>Large contexts</strong> may spill into shared GPU memory and slow sharply.</li>
+                <li><strong>Platform coverage</strong> is cross-platform, with the most testing on Windows.</li>
+            </ul>
+        </article>
+    </section>
+
+    <section class="page-section">
+        <p class="section-label">PROJECT MAP</p>
+        <h2>Where the main pieces live.</h2>
+        <pre class="system-diagram" aria-label="ZyleBot project structure">app/
+├── main.py             API lifecycle + JSON/SSE routes
+├── pages.py            HTML page routes
+├── agent_loop.py       Tool loop + approval pause/resume
+├── llm_client.py       LM Studio protocol boundary
+├── model_manager.py    LM Studio CLI control
+├── command_guard.py    Allow / confirm / block classifier
+├── db.py               SQLite persistence
+├── tools/              Registered capabilities
+├── templates/          Jinja app shell + content pages
+└── static/             Vanilla JavaScript + CSS
+models.json             Model aliases + context lengths
+.env.example            Commented configuration template</pre>
+    </section>
+
+    <section class="page-cta">
+        <p class="page-kicker">SETUP COMPLETE // LOCAL CORE READY</p>
+        <h2>Start a conversation with your own machine.</h2>
+        <p>Open the console, choose the loaded model, and give the Agent Loop something real to inspect.</p>
+        <div class="page-cta-actions">
+            <a class="page-cta-link" href="/">Open the console <span aria-hidden="true">→</span></a>
+            <a class="page-cta-link page-cta-link--secondary" href="https://github.com/zyle47/ZyleBot#readme" target="_blank" rel="noopener noreferrer">View on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+    </section>
+{% endblock %}

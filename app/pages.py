@@ -38,6 +38,13 @@ async def product_approval_gate(request: Request):
     return templates.TemplateResponse(request, "product/approval_gate.html")
 
 
+# --- Resource pages (footer "Resources" column) ----------------------------
+
+@router.get("/resources/readme")
+async def resources_readme(request: Request):
+    return templates.TemplateResponse(request, "resources/readme.html")
+
+
 # --- About pages ------------------------------------------------------------
 
 @router.get("/about/how-it-works")
