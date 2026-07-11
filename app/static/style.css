@@ -765,6 +765,21 @@ header::before {
 .footer-link-group a::before { content: "> "; color: rgba(255, 60, 172, 0.72); }
 .footer-link-group a:hover { color: #fff; text-shadow: 0 0 9px rgba(255, 139, 208, 0.42); transform: translateX(2px); }
 
+.footer-link-group a.footer-link--icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.footer-link-group a.footer-link--icon::before { content: none; }
+
+.footer-link-icon {
+    width: 0.78rem;
+    height: 0.78rem;
+    flex: 0 0 auto;
+    color: rgba(255, 60, 172, 0.82);
+}
+
 .footer-rail {
     display: grid;
     grid-template-columns: 1fr auto 1fr;

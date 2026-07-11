@@ -112,6 +112,15 @@ CASES: list[tuple[str, Verdict]] = [
     ("echo hi; del foo", BLOCK),
     ("echo safe && del foo", BLOCK),
     ("echo safe || del foo", BLOCK),
+    # -- nested subexpression / scriptblock syntax --
+    ("Get-ChildItem $(Remove-Item C:\\temp\\important.txt -Force)", BLOCK),
+    ("Get-Process $(Remove-Item x -Force; Get-Date)", BLOCK),
+    ("Write-Host $(Get-ChildItem).Count", CONFIRM),  # benign subexpression, still capped below ALLOW
+    ("Get-ChildItem -Path $(Get-Location)", CONFIRM),  # ditto
+    # -- protected .env --
+    ("cat .env", BLOCK),
+    ("cat ./.env", BLOCK),
+    ("Get-Content .\\.env", BLOCK),
 ]
 
 

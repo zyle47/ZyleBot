@@ -1,0 +1,74 @@
+{% extends "page.html" %}
+
+{% block title %}How it works — ZyleBot{% endblock %}
+
+{% block page_content %}
+    <section class="page-hero">
+        <p class="page-kicker">ABOUT // 01 // UNDER THE HOOD</p>
+        <h1>How it works</h1>
+        <p class="page-hero-line">One local model. A small set of tools. You keep the final say.</p>
+        <p class="page-lede">
+            ZyleBot is a FastAPI app between your browser and LM Studio. It stores conversations,
+            sends the relevant context to the loaded model, runs permitted tools, and streams the
+            result back. There is no hidden cloud service behind the chat.
+        </p>
+        <div class="page-signal-row" aria-label="System highlights">
+            <span>Local inference</span><span>Explicit tools</span><span>SQLite memory</span><span>Human approval</span>
+        </div>
+    </section>
+
+    <section class="page-section page-section--accent">
+        <p class="section-label">ONE MESSAGE, END TO END</p>
+        <h2>The path through ZyleBot.</h2>
+        <ol class="process-list">
+            <li><strong>You send a message</strong><span>The browser posts your text—and an image when attached—to the local FastAPI server.</span></li>
+            <li><strong>ZyleBot builds the context</strong><span>It loads that conversation's saved history and sends it to the model running in LM Studio.</span></li>
+            <li><strong>The model answers or requests a tool</strong><span>Tool calls are structured requests. The model does not receive unrestricted Python or filesystem access.</span></li>
+            <li><strong>The loop checks the request</strong><span>Read-only tools can run automatically. Actions that can change the system pause for approval.</span></li>
+            <li><strong>The result returns to the model</strong><span>It can use the evidence, call another tool, correct course, or produce the final answer.</span></li>
+            <li><strong>The browser receives a live stream</strong><span>Reasoning, tool events, approval cards, and answer text appear as the backend emits them.</span></li>
+        </ol>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">WHAT RUNS WHERE</p>
+            <h2>Your machine does the work.</h2>
+            <p>LM Studio hosts the language model. FastAPI owns the agent loop and API. The browser is the interface. SQLite keeps conversations and messages. Voice transcription uses <code>faster-whisper</code> locally on the CPU.</p>
+            <p>Web search, page fetching, geocoding, and weather checks contact their respective internet services when you use those features. “Local” describes the model, app, and stored chat data—not an imaginary claim that every feature works offline.</p>
+        </article>
+        <article class="page-section">
+            <p class="section-label">WHAT THE MODEL CAN DO</p>
+            <h2>Capabilities come from registered tools.</h2>
+            <p>The model can ask ZyleBot to inspect files and system information, search or read the web, check weather, write files, create directories, and run shell commands. ZyleBot validates the tool name and arguments before dispatching anything.</p>
+            <p>A model response is still a prediction, not proof. Tools let it check reality; they do not make every conclusion correct.</p>
+        </article>
+    </section>
+
+    <section class="page-section">
+        <p class="section-label">CONTROL BOUNDARY</p>
+        <h2>Reading can proceed. Impact needs permission.</h2>
+        <p>Read-only tools normally run without interruption. File writes and directory creation proposed by the model stop the loop and show their exact arguments. Shell commands are classified first: known read-only commands can run automatically, dangerous commands are blocked, and everything else pauses for approval. Approval runs that call once; denial runs nothing and returns the refusal to the model.</p>
+        <p>The classifier and approval gate are not a sandbox. An approved command runs with the ZyleBot process's permissions. Read it as carefully as a command you typed yourself. See the <a href="/product/approval-gate">Approval Gate</a> for the full boundary.</p>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">MEMORY</p>
+            <h2>The app remembers; the model does not.</h2>
+            <p>Each conversation is stored separately in SQLite. On every turn, ZyleBot reconstructs the context from saved messages. A new chat starts clean; reopening one restores its history. The header gauge shows its estimated use of the loaded context window.</p>
+        </article>
+        <article class="page-section">
+            <p class="section-label">LIMITS</p>
+            <h2>Local does not mean infallible.</h2>
+            <p>Models can misunderstand, tools can fail, websites can block automated reading, and a finite context window cannot hold unlimited history. Image turns currently run without tools because the local stack does not reliably support both together.</p>
+        </article>
+    </section>
+
+    <section class="page-cta">
+        <p class="page-kicker">SYSTEM // READY</p>
+        <h2>That is the whole bargain.</h2>
+        <p>The model proposes. Tools connect it to facts. ZyleBot enforces the boundary. You remain responsible for the decision.</p>
+        <a class="page-cta-link" href="/">Open the console <span aria-hidden="true">→</span></a>
+    </section>
+{% endblock %}

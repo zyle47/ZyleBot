@@ -4,53 +4,180 @@
 
 {% block page_content %}
     <section class="page-hero">
-        <p class="page-kicker">PRODUCT // 01</p>
+        <p class="page-kicker">PRODUCT // 01 // THE ENGINE</p>
         <h1>Agent Loop</h1>
+        <p class="page-hero-line">A chatbot gives you an answer. ZyleBot keeps working until it has one worth giving.</p>
         <p class="page-lede">
-            One request in, a chain of reasoning and tool calls out — streamed to your
-            screen as it happens, not after the fact.
+            Your request becomes a live cycle of reasoning, tool use, observation, and correction.
+            ZyleBot can inspect what is real, gather what is missing, and turn the evidence into a
+            useful result — while you watch the work happen on your own machine.
+        </p>
+        <div class="page-signal-row" aria-label="Agent Loop highlights">
+            <span>Multi-step execution</span>
+            <span>Live streaming</span>
+            <span>Persistent memory</span>
+            <span>Human control</span>
+        </div>
+    </section>
+
+    <section class="page-intro">
+        <p class="page-kicker">WHY IT EXISTS</p>
+        <h2>Because the first answer is often only the beginning.</h2>
+        <p>
+            Real questions rarely fit inside one model response. The model may need to find a file,
+            read a page, check the weather, compare results, discover that its first idea was wrong,
+            and try a better path. A one-shot chat can describe that work. The Agent Loop can
+            actually do it.
+        </p>
+        <p>
+            That difference turns a local language model from a clever text generator into a
+            practical operator: still fallible, still visible, but able to move through a task
+            instead of stopping at a suggestion.
         </p>
     </section>
 
     <section class="page-section">
-        <h2>Multi-step ReAct, not a single round-trip</h2>
+        <p class="section-label">THE CYCLE</p>
+        <h2>One request. As many useful steps as the job needs.</h2>
+        <ol class="process-list">
+            <li>
+                <strong>Understand the goal</strong>
+                <span>ZyleBot reads the current message together with the relevant conversation history.</span>
+            </li>
+            <li>
+                <strong>Choose the next move</strong>
+                <span>The model decides whether it can answer or needs evidence from an available tool.</span>
+            </li>
+            <li>
+                <strong>Act and observe</strong>
+                <span>A safe tool runs automatically, or a system-changing action pauses for your approval.</span>
+            </li>
+            <li>
+                <strong>Re-evaluate</strong>
+                <span>The result goes back into the loop, where the model can continue, change course, or finish.</span>
+            </li>
+            <li>
+                <strong>Deliver the result</strong>
+                <span>The final response is grounded in what the loop found and did, not merely what the model remembers.</span>
+            </li>
+        </ol>
         <p>
-            ZyleBot doesn't just answer — it reasons, calls a tool, reads the result, and
-            decides whether to call another one, up to <code>AGENT_MAX_STEPS</code> steps
-            per turn. A question like "weather in Belgrade" can trigger a search, a fetch,
-            and a synthesis step before you see a final answer. Identical repeat calls are
-            skipped, and if the step cap is hit the model is forced to answer from what it
-            already gathered — you never get stuck in a silent loop.
+            This is the ReAct pattern in practical form: reason, act, observe, repeat. The limit is
+            configurable through <code>AGENT_MAX_STEPS</code>, so the loop has room to solve a task
+            without being allowed to wander forever.
+        </p>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">VISIBLE BY DEFAULT</p>
+            <h2>Watch the work, not a spinner.</h2>
+            <p>
+                Reasoning, tool activity, and the final answer arrive over a streaming connection as
+                they happen. The model's reasoning is kept separate from its answer and rendered in a
+                dimmed, collapsible block. Open it when you want the trail; close it when you only want
+                the result.
+            </p>
+            <p>
+                Tool calls appear as their own events, so a slow web lookup does not look like a frozen
+                app. You can see whether ZyleBot is searching, reading, checking, or waiting on you.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">BUILT TO FINISH</p>
+            <h2>Guardrails against useless loops.</h2>
+            <p>
+                Agentic does not have to mean endless. Identical tool calls are recognized and skipped.
+                Failed or empty paths are not supposed to be hammered repeatedly. If the configured step
+                ceiling is reached, ZyleBot asks the model to stop calling tools and produce the best
+                answer supported by what it already gathered.
+            </p>
+            <p>
+                And when a local model returns an empty final message after doing real work, the loop has
+                fallback handling so the conversation does not end in a blank bubble.
+            </p>
+        </article>
+    </section>
+
+    <section class="page-section page-section--accent">
+        <p class="section-label">A REAL-WORLD EXAMPLE</p>
+        <h2>“Find the relevant file and explain what this project does.”</h2>
+        <div class="example-trace" aria-label="Example agent trace">
+            <span><b>01</b> search the project tree</span>
+            <span><b>02</b> identify README and configuration</span>
+            <span><b>03</b> read the useful sections</span>
+            <span><b>04</b> connect the evidence</span>
+            <span><b>05</b> answer in plain language</span>
+        </div>
+        <p>
+            The valuable part is not that the model can write a convincing project summary. It is that
+            it can inspect <em>your current project</em> before writing one. The same pattern applies to
+            researching a current topic, checking a machine, reading a long document in chunks, or
+            collecting the facts needed for a decision.
         </p>
     </section>
 
     <section class="page-section">
-        <h2>Reasoning streamed live, over SSE</h2>
+        <p class="section-label">CONTINUITY</p>
+        <h2>Each conversation becomes its own working context.</h2>
         <p>
-            The model's <code>reasoning_content</code> and its <code>content</code> are two
-            separate channels, streamed token-by-token over server-sent events as they're
-            generated. Reasoning renders dimmed and collapsible so you can watch the model
-            think without it crowding the actual answer.
+            Conversations live in SQLite and survive a restart. When you return, ZyleBot rebuilds the
+            model context from that conversation's saved messages rather than relying on invisible state
+            inside LM Studio. Start a new chat and you get a clean context; reopen an old one and its
+            history is there.
+        </p>
+        <p>
+            This makes the mental model simple: the app owns the memory, the local model remains
+            stateless, and every conversation is an independent workspace. The context gauge in the
+            header shows how much of the loaded model's window that workspace is using.
         </p>
     </section>
 
-    <section class="page-section">
-        <h2>Pauses for you, not around you</h2>
-        <p>
-            When a step needs a risky tool, the loop doesn't guess — it pauses mid-turn and
-            waits for your Approve or Deny. Nothing runs until you say so. See
-            <a href="/product/approval-gate">Approval Gate</a> for how that gate works.
-        </p>
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">SPEAK NATURALLY</p>
+            <h2>Voice without renting a cloud.</h2>
+            <p>
+                Use the microphone when typing is the slow part. Speech is transcribed locally with
+                <code>faster-whisper</code> on the CPU, leaving precious GPU memory available for the
+                language model. The transcription enters the same conversation and the same Agent Loop
+                as typed input.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">SHOW, DON'T DESCRIBE</p>
+            <h2>Vision when words are not enough.</h2>
+            <p>
+                Paste or attach an image and ZyleBot can inspect it in a dedicated vision turn. Image
+                turns intentionally run without tools because the current local-model stack cannot
+                reliably receive both at once. Older images collapse to lightweight placeholders on
+                later turns, keeping the chat usable without repeatedly spending vision tokens.
+            </p>
+        </article>
     </section>
 
     <section class="page-section">
-        <h2>Voice and vision, same loop</h2>
+        <p class="section-label">YOU REMAIN THE OPERATOR</p>
+        <h2>Autonomy for research. Permission for impact.</h2>
         <p>
-            Speak instead of type — audio is transcribed locally by
-            <code>faster-whisper</code> running on CPU, so it never competes with the model
-            for VRAM. Paste an image and the loop switches to vision mode for that turn.
-            Every conversation, including its images, is persisted to SQLite so history
-            survives a restart.
+            The loop can move quickly through read-only work: inspect files, query system information,
+            search the web, fetch a page, check weather, and continue reasoning. The moment it proposes
+            an action that changes files or invokes the shell, the loop stops at the
+            <a href="/product/approval-gate">Approval Gate</a>.
         </p>
+        <p>
+            That pause is part of the engine, not a warning pasted on top. Approve and the exact call
+            runs once. Deny and nothing runs; the model receives the refusal and can offer another route.
+            ZyleBot gets enough agency to be useful without quietly borrowing your authority.
+        </p>
+    </section>
+
+    <section class="page-cta">
+        <p class="page-kicker">READY // LOOP ONLINE</p>
+        <h2>Give it a goal, then watch it earn the answer.</h2>
+        <p>Ask for something that requires more than memory. That is where the Agent Loop stops feeling like chat.</p>
+        <a class="page-cta-link" href="/">Open the console <span aria-hidden="true">→</span></a>
     </section>
 {% endblock %}

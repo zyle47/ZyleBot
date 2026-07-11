@@ -36,3 +36,10 @@ async def product_model_control(request: Request):
 @router.get("/product/approval-gate")
 async def product_approval_gate(request: Request):
     return templates.TemplateResponse(request, "product/approval_gate.html")
+
+
+# --- About pages ------------------------------------------------------------
+
+@router.get("/about/how-it-works")
+async def about_how_it_works(request: Request):
+    return templates.TemplateResponse(request, "about/how_it_works.html")

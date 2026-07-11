@@ -4,39 +4,193 @@
 
 {% block page_content %}
     <section class="page-hero">
-        <p class="page-kicker">PRODUCT // 03</p>
+        <p class="page-kicker">PRODUCT // 03 // LOCAL RUNTIME</p>
         <h1>Model Control</h1>
+        <p class="page-hero-line">Your assistant is not a distant service. The engine is right there in the header.</p>
         <p class="page-lede">
-            Swap the loaded model from the header dropdown — no config edit, no restart.
+            See whether LM Studio is online, choose which local model does the thinking, and track the
+            conversation's context pressure without leaving the chat. Model Control turns local inference
+            from background machinery into an understandable part of the product.
+        </p>
+        <div class="page-signal-row" aria-label="Model Control highlights">
+            <span>In-app switching</span>
+            <span>Live health state</span>
+            <span>Context telemetry</span>
+            <span>Friendly aliases</span>
+        </div>
+    </section>
+
+    <section class="page-intro">
+        <p class="page-kicker">THE LOCAL ADVANTAGE</p>
+        <h2>The model is a component you control, not an account you rent.</h2>
+        <p>
+            ZyleBot talks to LM Studio's OpenAI-compatible server on your machine. Your chat history lives
+            in the app's local database, inference happens on hardware you can see, and changing the model
+            does not require rewriting the application around a new cloud provider.
+        </p>
+        <p>
+            Local models come with a different kind of responsibility: you choose what is loaded, how much
+            context it receives, and how those choices fit your hardware. Model Control keeps those
+            decisions close to the conversation instead of burying them in a terminal window.
         </p>
     </section>
 
     <section class="page-section">
-        <h2>Switching without leaving the chat</h2>
+        <p class="section-label">CONTROL SURFACE</p>
+        <h2>The essentials, visible at a glance.</h2>
+        <div class="control-grid">
+            <article>
+                <span class="control-state control-state--green">ONLINE</span>
+                <h3>Runtime health</h3>
+                <p>A live status indicator shows whether ZyleBot can reach LM Studio and whether the local inference path is ready.</p>
+            </article>
+            <article>
+                <span class="control-state control-state--pink">MODEL</span>
+                <h3>Active engine</h3>
+                <p>The dropdown lists configured aliases and lets you replace the loaded model without editing <code>.env</code> or restarting ZyleBot.</p>
+            </article>
+            <article>
+                <span class="control-state control-state--amber">CONTEXT</span>
+                <h3>Working headroom</h3>
+                <p>The gauge compares real conversation usage with the loaded model's context window so pressure is visible before it becomes a surprise.</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="page-section page-section--accent">
+        <p class="section-label">SWITCHING MODELS</p>
+        <h2>Change the brain without changing the workspace.</h2>
+        <ol class="process-list process-list--compact">
+            <li>
+                <strong>Choose an alias</strong>
+                <span>Select a friendly model name from the header instead of copying a long repository identifier.</span>
+            </li>
+            <li>
+                <strong>Unload the current model</strong>
+                <span>ZyleBot asks the <code>lms</code> CLI to free the active runtime before loading the replacement.</span>
+            </li>
+            <li>
+                <strong>Load the selected model</strong>
+                <span>The alias resolves to its actual LM Studio model id and configured context length.</span>
+            </li>
+            <li>
+                <strong>Continue the conversation</strong>
+                <span>The chat stays in place; the next inference is handled by the newly loaded engine.</span>
+            </li>
+        </ol>
         <p>
-            The model dropdown drives the <code>lms</code> CLI directly, loading and
-            unloading models in LM Studio on your behalf. Aliases and per-model context
-            limits live in <code>models.json</code> — pick a friendly name, ZyleBot resolves
-            the real model id underneath.
+            There is no server restart and no manual configuration edit in the middle of your work. The
+            operation is a direct choice you made in the interface, so it does not go through the tool
+            <a href="/product/approval-gate">Approval Gate</a> used for model-proposed actions.
         </p>
     </section>
 
-    <section class="page-section">
-        <h2>The context gauge</h2>
-        <p>
-            The header bar tracks real token usage against the loaded model's context
-            window, turning amber at 70% and red at 90%. It's read from
-            <code>contextUsed</code> on every poll, so a routine health check never wipes
-            it mid-conversation.
-        </p>
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">CONFIGURATION</p>
+            <h2>Friendly names on top, exact identities underneath.</h2>
+            <p>
+                <code>models.json</code> is the source of truth for model aliases, real LM Studio ids, and
+                context limits. The interface can say something memorable while the backend resolves the
+                precise model artifact that LM Studio expects.
+            </p>
+            <p>
+                Keeping this mapping in one small file matters because downloaded model ids can be long and
+                may change when multiple quantizations are installed. Update the mapping once and the rest
+                of ZyleBot keeps speaking the same language.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">MODEL-AGNOSTIC CORE</p>
+            <h2>Same product, different strengths.</h2>
+            <p>
+                The conversation system, SQLite memory, interface, and
+                <a href="/product/tool-arsenal">Tool Arsenal</a> do not change when the model changes. What
+                changes is the model's reasoning style, speed, language ability, vision support, and skill
+                at selecting and formatting tool calls.
+            </p>
+            <p>
+                That separation lets you experiment honestly. A fast small model can handle routine chat;
+                a more capable model can take the difficult turn. ZyleBot remains the stable operating
+                layer around both.
+            </p>
+        </article>
     </section>
 
     <section class="page-section">
-        <h2>Start the server from the app</h2>
+        <p class="section-label">THE CONTEXT GAUGE</p>
+        <h2>A fuel gauge for the model's working memory.</h2>
         <p>
-            If LM Studio's server isn't running, the header shows a <em>Start server</em>
-            button that runs <code>lms server start</code> for you — one less window to
-            keep open.
+            Every message, tool call, tool result, and system instruction sent to the model consumes part
+            of its context window. Long conversations can feel infinite in the interface while the model's
+            usable working space is anything but. The header makes that hidden constraint visible.
         </p>
+        <div class="gauge-demo" aria-label="Context gauge thresholds">
+            <div><span class="gauge-fill gauge-fill--green" style="width: 48%"></span></div><b>0–69% // comfortable</b>
+            <div><span class="gauge-fill gauge-fill--amber" style="width: 78%"></span></div><b>70–89% // watch the window</b>
+            <div><span class="gauge-fill gauge-fill--red" style="width: 94%"></span></div><b>90%+ // high pressure</b>
+        </div>
+        <p>
+            The gauge uses actual usage reported for the active conversation and the configured window for
+            the loaded model. It turns amber at 70 percent and red at 90 percent. Routine health polling
+            preserves the last known usage instead of making the bar flicker back to zero between turns.
+        </p>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">RECOVERY</p>
+            <h2>If LM Studio is down, the interface says so.</h2>
+            <p>
+                ZyleBot polls the local server and reports an offline state instead of leaving a dead chat
+                box to explain itself. When the server is unavailable, a <em>Start server</em> control
+                appears and runs <code>lms server start</code> for you.
+            </p>
+            <p>
+                Once LM Studio responds, ZyleBot synchronizes the active model state and returns the chat
+                controls to service. You still need LM Studio installed and a model downloaded; the button
+                removes ceremony, not prerequisites.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">HARDWARE REALITY</p>
+            <h2>Local control means honest tradeoffs.</h2>
+            <p>
+                Larger models and wider contexts ask more of VRAM and system memory. More capacity can buy
+                stronger reasoning or longer continuity, but it can also slow inference dramatically when
+                the workload spills beyond the GPU.
+            </p>
+            <p>
+                Model Control does not pretend every model fits every machine. It gives you the visibility
+                to find the useful balance: quality you trust, speed you can tolerate, and a context window
+                that stays inside the hardware budget you actually own.
+            </p>
+        </article>
+    </section>
+
+    <section class="page-section">
+        <p class="section-label">WHAT SWITCHING DOES — AND DOES NOT — DO</p>
+        <h2>The engine changes. Your local workspace remains yours.</h2>
+        <ul class="check-list">
+            <li><strong>It does</strong> route future model responses through the newly selected local model.</li>
+            <li><strong>It does</strong> update the active context limit used by the interface gauge.</li>
+            <li><strong>It does not</strong> delete or fork the current conversation.</li>
+            <li><strong>It does not</strong> change which application tools are registered.</li>
+            <li><strong>It does not</strong> send your stored chat history to a hosted ZyleBot service.</li>
+        </ul>
+        <p>
+            The next model receives the conversation context ZyleBot sends for the next turn. That makes
+            switching powerful, but it also means a model with a smaller window or weaker tool support may
+            interpret the same workspace differently. You are changing the reasoner, not rewriting the past.
+        </p>
+    </section>
+
+    <section class="page-cta">
+        <p class="page-kicker">RUNTIME // YOUR HARDWARE</p>
+        <h2>Choose the engine. Keep the cockpit.</h2>
+        <p>Run the model that fits this machine, this task, and this moment — then switch when those needs change.</p>
+        <a class="page-cta-link" href="/">Open the console <span aria-hidden="true">→</span></a>
     </section>
 {% endblock %}

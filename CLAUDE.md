@@ -16,7 +16,7 @@ Open http://127.0.0.1:8000. No frontend build step — CSS/HTML changes just nee
 ## Specialist routing
 - Claude definitions live in `.claude/agents/`: builders `zylebot-frontend`, `zylebot-backend`, `zylebot-db`; checkers `code-reviewer`, `verifier`.
 - Codex definitions live in `.codex/agents/`: builders `frontend`, `backend`, `database`; checkers `reviewer`, `verifier`.
-- Route feature-sized work to the matching specialist; the main orchestrator handles trivial and small edits, splits cross-domain work, and coordinates out-of-lane follow-up. Use the reviewer after implementation and the verifier for proportional runtime checks.
+- **Specialists are opt-in only.** Never spawn a subagent unless Nemanja explicitly asks for an agent, delegation, or parallel work in the current request. Otherwise the main model handles the task directly. When delegation is explicitly requested, the orchestrator chooses the relevant roles, coordinates cross-domain work, and integrates their results.
 
 ## Ground rules
 - Config: default in `app/config.py`, override in `.env`; keep `.env` and `.env.example` in sync.

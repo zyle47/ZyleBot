@@ -4,41 +4,214 @@
 
 {% block page_content %}
     <section class="page-hero">
-        <p class="page-kicker">PRODUCT // 04</p>
+        <p class="page-kicker">PRODUCT // 04 // HUMAN AUTHORITY</p>
         <h1>Approval Gate</h1>
+        <p class="page-hero-line">The model can propose the action. Only you can authorize it.</p>
         <p class="page-lede">
-            Nothing that touches your files or your shell runs without you saying yes,
-            first.
+            ZyleBot moves freely when it is gathering read-only information. The moment it wants to write
+            a file, create a directory, append content, or invoke your shell, the Agent Loop stops. You see
+            the exact proposal and decide whether that single action deserves your trust.
+        </p>
+        <div class="page-signal-row" aria-label="Approval Gate highlights">
+            <span>Exact arguments</span>
+            <span>Approve or deny</span>
+            <span>Persistent pause</span>
+            <span>No silent execution</span>
+        </div>
+    </section>
+
+    <section class="page-intro">
+        <p class="page-kicker">WHY A GATE MATTERS</p>
+        <h2>Useful agency needs a boundary you can actually see.</h2>
+        <p>
+            A local agent has access to something more personal than a cloud account: your real files and
+            your real shell, running with your user permissions. That power is what lets an assistant move
+            from advice to action. It is also exactly why “the model seemed confident” is not a security
+            policy.
+        </p>
+        <p>
+            The Approval Gate creates a clear transfer of authority. ZyleBot may reason about an action and
+            prepare its arguments, but preparation is not permission. Until you approve, the action has not
+            happened.
+        </p>
+    </section>
+
+    <section class="page-section page-section--accent">
+        <p class="section-label">THE EXACT SEQUENCE</p>
+        <h2>A real pause inside the Agent Loop.</h2>
+        <ol class="process-list approval-process">
+            <li>
+                <strong>The model requests an action tool</strong>
+                <span>It chooses a registered <code>CONFIRM_REQUIRED</code> capability and supplies structured arguments.</span>
+            </li>
+            <li>
+                <strong>ZyleBot persists the pending state</strong>
+                <span>The assistant message and proposed tool call are stored before control returns to the interface.</span>
+            </li>
+            <li>
+                <strong>The approval card appears</strong>
+                <span>You see the tool name and arguments that would be passed to it — paths, content, command, or directory.</span>
+            </li>
+            <li>
+                <strong>The loop waits</strong>
+                <span>No action result is fabricated and no background execution races ahead while you are deciding.</span>
+            </li>
+            <li>
+                <strong>Your decision resumes the turn</strong>
+                <span>Approval executes that proposal once; denial returns a refusal result without executing it.</span>
+            </li>
+        </ol>
+        <p>
+            This is not a cosmetic modal over an already-running command. The backend marks the
+            conversation as pending confirmation and the loop does not continue until the confirmation
+            endpoint receives your decision.
         </p>
     </section>
 
     <section class="page-section">
-        <h2>The gate, exactly</h2>
+        <p class="section-label">TWO RISK TIERS</p>
+        <h2>Routine observation stays fluid. Consequential action slows down.</h2>
+        <div class="risk-grid">
+            <article class="risk-card risk-card--safe">
+                <span>SAFE // AUTO</span>
+                <h3>Read-only tools</h3>
+                <p>
+                    Listing directories, reading files, finding paths, inspecting system information,
+                    searching the web, fetching pages, and checking weather can run automatically.
+                </p>
+                <b>They gather information without intentionally changing local state.</b>
+            </article>
+            <article class="risk-card risk-card--confirm">
+                <span>CONFIRM_REQUIRED // PAUSE</span>
+                <h3>Action tools</h3>
+                <p>
+                    Writing or appending files, creating directories, and executing shell commands always
+                    stop at the gate when proposed by the model.
+                </p>
+                <b>They can change the system, so they require your explicit decision.</b>
+            </article>
+        </div>
         <p>
-            When the agent loop wants to call a CONFIRM_REQUIRED tool —
-            <code>write_file</code>, <code>append_file</code>, <code>make_directory</code>,
-            <code>run_command</code> — the turn pauses and a card appears showing the exact
-            tool name and the exact arguments it intends to run. Nothing is inferred or
-            summarized; what you see is what would execute.
+            The tier belongs to the tool definition, not to the model's opinion of the moment. A persuasive
+            explanation cannot downgrade <code>run_command</code> to safe, and a different loaded model
+            cannot opt out of the registry's policy.
+        </p>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">APPROVE</p>
+            <h2>Execute this proposal once.</h2>
+            <p>
+                Approval authorizes the pending call shown on the card. ZyleBot invokes it, stores the
+                result, and gives that result back to the model. The model can then explain what happened,
+                verify the outcome with safe tools, or propose a separate next action.
+            </p>
+            <p>
+                A later action is a new decision. Approving one write does not create blanket permission
+                for every write the model might imagine afterward.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">DENY</p>
+            <h2>Continue without executing it.</h2>
+            <p>
+                Denial does not kill the conversation or pretend the request succeeded. The proposed call
+                is refused, the loop resumes, and the model receives that refusal as the tool result.
+            </p>
+            <p>
+                It can explain why the action was useful, suggest a safer alternative, or finish with
+                instructions you can carry out yourself. “No” remains a productive answer.
+            </p>
+        </article>
+    </section>
+
+    <section class="page-section">
+        <p class="section-label">WHAT YOU CAN INSPECT</p>
+        <h2>Approval is attached to concrete arguments, not vague intent.</h2>
+        <div class="action-list">
+            <div><code>write_file</code><span>The destination path and the full text proposed for the file.</span></div>
+            <div><code>append_file</code><span>The target path and the exact content that would be added.</span></div>
+            <div><code>make_directory</code><span>The precise directory path the tool would attempt to create.</span></div>
+            <div><code>run_command</code><span>The command string proposed for your native shell.</span></div>
+        </div>
+        <p>
+            Read carefully, especially when shell syntax can expand wildcards, interpolate variables, or
+            affect more than one file. The gate exposes the proposal; it does not guarantee that the model
+            understood every consequence of the command it wrote.
+        </p>
+    </section>
+
+    <section class="page-section page-section--warning">
+        <p class="section-label">AN HONEST SECURITY BOUNDARY</p>
+        <h2>The gate is a decision point, not a sandbox.</h2>
+        <p>
+            When you approve <code>run_command</code>, the command runs with the privileges of the ZyleBot
+            process. It can be as powerful as something you typed into that shell yourself. Approval does
+            not make an unsafe command safe, and it does not contain the command after execution begins.
+        </p>
+        <p>
+            Treat the card like a terminal prompt from a very fast collaborator: check the path, read the
+            command, understand the scope, and deny anything you would not run manually. The protection is
+            that the model cannot cross this boundary silently — judgment remains yours.
         </p>
     </section>
 
     <section class="page-section">
-        <h2>Approve or deny</h2>
+        <p class="section-label">SURVIVES NAVIGATION</p>
+        <h2>A refresh does not turn waiting into permission.</h2>
         <p>
-            Approve resumes the loop with that one call executed. Deny resumes it without
-            running anything, and the model continues from there knowing it was refused.
-            Either way, the decision is yours alone — read-only tools never reach this gate
-            at all.
+            Pending confirmation is stored with the conversation, not held only in the browser's memory.
+            Close the tab, refresh the page, or reopen the conversation and the approval card is rebuilt
+            from that saved state. The loop is still waiting where you left it.
+        </p>
+        <p>
+            This persistence matters because a safety boundary should not depend on keeping one JavaScript
+            object alive. Reloading can recover the interface; it cannot skip the gate.
         </p>
     </section>
 
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">EXAMPLE // FILE CHANGE</p>
+            <h2>“Create a configuration file.”</h2>
+            <p>
+                ZyleBot can inspect nearby examples and draft the content with safe tools. When it requests
+                <code>write_file</code>, you inspect the destination and proposed configuration. Approve if
+                both are right; deny if it targeted the wrong place or chose values you do not want.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">EXAMPLE // COMMAND</p>
+            <h2>“Run the relevant verification.”</h2>
+            <p>
+                The Agent Loop can find the project's test command, but invoking it still raises a card.
+                You can confirm that the command is read-only and correctly scoped before allowing it to
+                consume time, create artifacts, or execute project code on your machine.
+            </p>
+        </article>
+    </section>
+
     <section class="page-section">
-        <h2>Survives a reload</h2>
+        <p class="section-label">DIRECT USER CONTROLS</p>
+        <h2>Not every button in the app is a model-proposed tool call.</h2>
         <p>
-            Close the tab mid-approval and reopen it — the pending confirmation re-renders
-            exactly as you left it. The loop is genuinely paused, not just visually paused,
-            so a refresh can't be used to skip the gate.
+            The Approval Gate governs action tools selected by the Agent Loop. When you directly choose a
+            model from the header or press <em>Start server</em>, your click is already the initiating human
+            action, so ZyleBot does not place a second confirmation card in front of it.
         </p>
+        <p>
+            The distinction is intentional: proposals originating from the model require a transfer of
+            authority; explicit controls operated by you are already authorized by the interaction itself.
+        </p>
+    </section>
+
+    <section class="page-cta">
+        <p class="page-kicker">AUTHORITY // HUMAN HELD</p>
+        <h2>Let the agent prepare the move. Keep your hand on execute.</h2>
+        <p>ZyleBot can do real work because the moment of consequence still belongs to you.</p>
+        <a class="page-cta-link" href="/">Open the console <span aria-hidden="true">→</span></a>
     </section>
 {% endblock %}

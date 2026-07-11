@@ -4,41 +4,206 @@
 
 {% block page_content %}
     <section class="page-hero">
-        <p class="page-kicker">PRODUCT // 02</p>
+        <p class="page-kicker">PRODUCT // 02 // CAPABILITIES</p>
         <h1>Tool Arsenal</h1>
+        <p class="page-hero-line">A model can know a lot. Tools let it find out what is true right now.</p>
         <p class="page-lede">
-            A registry of tools the model can reach for — filesystem, system, web — split
-            into what runs automatically and what waits for you.
+            ZyleBot can move beyond its training data to inspect your workspace, read live system state,
+            research the web, and — when you explicitly allow it — take action. Every capability is
+            declared, typed, and placed in a clear risk tier before the model ever sees it.
+        </p>
+        <div class="page-signal-row" aria-label="Tool Arsenal highlights">
+            <span>Local inspection</span>
+            <span>Live web research</span>
+            <span>Typed tool calls</span>
+            <span>Risk-tiered actions</span>
+        </div>
+    </section>
+
+    <section class="page-intro">
+        <p class="page-kicker">WHY TOOLS CHANGE THE ANSWER</p>
+        <h2>Fluency is useful. Evidence is better.</h2>
+        <p>
+            Without tools, a language model can only respond from the context you paste and the patterns
+            it learned in the past. It might explain how to inspect a folder, suggest a search query, or
+            tell you which command to run. With tools, it can inspect the folder, perform the search, and
+            bring the result back into the conversation.
+        </p>
+        <p>
+            That is the point of the Arsenal: not a giant list of integrations for a feature table, but
+            a focused set of capabilities that close the gap between “here is what you could do” and
+            “here is what I found.”
         </p>
     </section>
 
     <section class="page-section">
-        <h2>Read-only tools run automatically</h2>
+        <p class="section-label">SAFE TIER // READ-ONLY</p>
+        <h2>Fast access to facts that cannot change your machine.</h2>
+        <div class="capability-grid">
+            <article>
+                <span class="capability-code">FS.01</span>
+                <h3>Navigate</h3>
+                <p><code>list_directory</code> reveals what is inside a folder so the model can orient itself before reading.</p>
+            </article>
+            <article>
+                <span class="capability-code">FS.02</span>
+                <h3>Read</h3>
+                <p><code>read_file</code> opens text content with pagination for material too large to consume in one pass.</p>
+            </article>
+            <article>
+                <span class="capability-code">FS.03</span>
+                <h3>Discover</h3>
+                <p><code>search_files</code> finds matching paths recursively without making the model guess where something lives.</p>
+            </article>
+            <article>
+                <span class="capability-code">FS.04</span>
+                <h3>Inspect</h3>
+                <p><code>get_file_info</code> returns file and directory metadata without opening or modifying the target.</p>
+            </article>
+            <article>
+                <span class="capability-code">SYS.01</span>
+                <h3>Check the machine</h3>
+                <p><code>get_system_info</code> reports operating system, CPU, memory, disk, and other useful local state.</p>
+            </article>
+            <article>
+                <span class="capability-code">WX.01</span>
+                <h3>Check the weather</h3>
+                <p><code>get_weather</code> gets current conditions through Open-Meteo instead of asking the model to improvise a forecast.</p>
+            </article>
+        </div>
         <p>
-            <code>list_directory</code>, <code>read_file</code>, <code>search_files</code>,
-            <code>get_file_info</code>, and <code>get_system_info</code> inspect your
-            machine without changing anything. <code>web_search</code>,
-            <code>fetch_url</code>, and <code>get_weather</code> reach outward — keyless,
-            via DuckDuckGo and Open-Meteo. These are the SAFE tier: no prompt, no delay.
+            These tools are classified as <code>SAFE</code>: they retrieve information but do not write
+            files, create folders, or execute arbitrary commands. The Agent Loop can call them without
+            interrupting you for routine approval.
+        </p>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">WEB.01</p>
+            <h2>Search for the right source.</h2>
+            <p>
+                <code>web_search</code> uses DuckDuckGo to discover current pages without requiring an
+                API key. It is the scout: useful for finding the exact article, documentation page, or
+                source that should be read next.
+            </p>
+            <p>
+                Search snippets are leads, not final evidence. The Agent Loop is instructed to follow a
+                promising result into the page whenever the question needs more than a headline.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">WEB.02</p>
+            <h2>Read beyond the snippet.</h2>
+            <p>
+                <code>fetch_url</code> downloads a page and extracts readable text. Long pages are
+                returned in chunks with an offset, allowing the loop to continue through a document
+                instead of silently truncating it and pretending the missing half did not matter.
+            </p>
+            <p>
+                Some bot-protected or heavily scripted sites still refuse automated reading. When that
+                happens, the error becomes part of the loop and ZyleBot can fall back to search results or
+                another source. The Arsenal extends reach; it does not fake access.
+            </p>
+        </article>
+    </section>
+
+    <section class="page-section page-section--accent">
+        <p class="section-label">CONFIRM_REQUIRED // ACTIONS</p>
+        <h2>When a tool can leave a footprint, you get the final word.</h2>
+        <div class="action-list">
+            <div><code>write_file</code><span>Create or replace a text file with content you can inspect before approval.</span></div>
+            <div><code>append_file</code><span>Add text to an existing file without replacing what is already there.</span></div>
+            <div><code>make_directory</code><span>Create a directory at the exact path proposed by the model.</span></div>
+            <div><code>run_command</code><span>Invoke the native shell — PowerShell on Windows, the configured shell on macOS or Linux.</span></div>
+        </div>
+        <p>
+            These are intentionally powerful and intentionally slower. The loop pauses, displays the tool
+            name and arguments, and waits. Nothing executes until you approve that specific proposal.
+            The <a href="/product/approval-gate">Approval Gate</a> is what makes action a deliberate
+            collaboration instead of a hidden side effect.
         </p>
     </section>
 
     <section class="page-section">
-        <h2>Action tools wait for a human</h2>
+        <p class="section-label">COMPOSITION</p>
+        <h2>The useful part is how tools work together.</h2>
+        <div class="workflow-stack">
+            <article>
+                <b>Research a changing topic</b>
+                <span><code>web_search</code> → choose a source → <code>fetch_url</code> → read more if truncated → synthesize</span>
+            </article>
+            <article>
+                <b>Understand an unfamiliar project</b>
+                <span><code>list_directory</code> → <code>search_files</code> → <code>read_file</code> → explain the structure</span>
+            </article>
+            <article>
+                <b>Prepare a local change</b>
+                <span>inspect files → reason about the edit → propose <code>write_file</code> → wait for approval → verify</span>
+            </article>
+            <article>
+                <b>Diagnose a machine</b>
+                <span><code>get_system_info</code> → interpret the state → propose a command only if deeper inspection is worth it</span>
+            </article>
+        </div>
         <p>
-            <code>write_file</code>, <code>append_file</code>, <code>make_directory</code>,
-            and <code>run_command</code> can change your system, so they sit in the
-            CONFIRM_REQUIRED tier. Calling any of them pauses the agent loop and raises the
-            approval card — see <a href="/product/approval-gate">Approval Gate</a>.
+            Each result returns to the <a href="/product/agent-loop">Agent Loop</a>. The model is not
+            following a hard-coded macro; it chooses the next available capability based on what the last
+            one revealed. That is how a small toolkit supports a much larger range of work.
         </p>
     </section>
 
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">ONE REGISTRY</p>
+            <h2>Capabilities stay consistent across models.</h2>
+            <p>
+                Tools are defined once in a central registry with a name, description, input schema,
+                implementation, and risk tier. ZyleBot turns that registry into the tool schema offered to
+                the currently loaded model.
+            </p>
+            <p>
+                Switching models through <a href="/product/model-control">Model Control</a> changes the
+                brain using the tools, not the tools themselves. A stronger tool-calling model may plan
+                better, but it receives the same declared boundaries.
+            </p>
+        </article>
+
+        <article class="page-section">
+            <p class="section-label">CONTROLLED OUTPUT</p>
+            <h2>Enough information, without an accidental flood.</h2>
+            <p>
+                File reads, fetched pages, command output, and other potentially large results have
+                configurable limits. Paginated tools tell the model how to continue when more content is
+                available; command execution also has time and output ceilings.
+            </p>
+            <p>
+                These limits protect the local context window and keep one noisy tool from swallowing the
+                whole conversation. More data is available when the task needs it, but it arrives in
+                deliberate pieces.
+            </p>
+        </article>
+    </section>
+
     <section class="page-section">
-        <h2>One registry, model-agnostic</h2>
+        <p class="section-label">DESIGNED FOR LOCAL TRUST</p>
+        <h2>No mystery capability hiding behind the chat box.</h2>
         <p>
-            Tools are declared once and exposed to whichever model is loaded in LM Studio —
-            switching models (see <a href="/product/model-control">Model Control</a>)
-            doesn't change what's available, only how well the model uses it.
+            ZyleBot can only call tools that the application explicitly registers and exposes. A model
+            cannot invent a new privileged operation and make the backend obey it. If a tool is absent,
+            it is unavailable. If it is marked for confirmation, it goes through the gate.
         </p>
+        <p>
+            That makes the Arsenal understandable enough to audit: a short, concrete list of ways the
+            model can observe the world and an even shorter list of ways it can change it.
+        </p>
+    </section>
+
+    <section class="page-cta">
+        <p class="page-kicker">TOOLS // ARMED WITH CONTEXT</p>
+        <h2>Ask for the result, not the instructions.</h2>
+        <p>Give ZyleBot a task that requires current evidence and let the Arsenal close the distance.</p>
+        <a class="page-cta-link" href="/">Open the console <span aria-hidden="true">→</span></a>
     </section>
 {% endblock %}

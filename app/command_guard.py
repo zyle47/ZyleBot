@@ -104,10 +104,50 @@ def _protected_project_paths() -> set[str]:
         db.name.lower(),
         str(db).lower(), str(db).lower().replace("\\", "/"),
         db_abs,
+        ".env",
     }
 
 
 _PROTECTED_PATHS = _protected_project_paths()
+
+_NESTED_EXEC_MARKERS = ("$(", "@(", "&{")
+
+
+def _extract_nested(command: str) -> list[str]:
+    """Return the contents of every $( ), @( ), or &{ } span, quote- and
+    depth-aware, so code inside a subexpression gets classified too instead
+    of only ever looking at the outer command's first token."""
+    spans: list[str] = []
+    i, n = 0, len(command)
+    while i < n:
+        marker = next((m for m in _NESTED_EXEC_MARKERS if command.startswith(m, i)), None)
+        if not marker:
+            i += 1
+            continue
+        open_ch = marker[-1]
+        close_ch = ")" if open_ch == "(" else "}"
+        start = i + len(marker)
+        depth = 1
+        j = start
+        in_single = in_double = False
+        while j < n and depth > 0:
+            ch = command[j]
+            if in_single:
+                in_single = ch != "'"
+            elif in_double:
+                in_double = ch != '"'
+            elif ch == "'":
+                in_single = True
+            elif ch == '"':
+                in_double = True
+            elif ch == open_ch:
+                depth += 1
+            elif ch == close_ch:
+                depth -= 1
+            j += 1
+        spans.append(command[start:j - 1])
+        i = j
+    return spans
 
 
 def _split_segments(command: str) -> list[str]:
@@ -144,8 +184,8 @@ def _split_segments(command: str) -> list[str]:
         elif ch == "|":
             segments.append("".join(current))
             current = []
-            i += 2 if command[i + 1 : i + 2] == "|" else 1
-        elif ch == "&" and command[i + 1 : i + 2] == "&":
+            i += 2 if command[i + 1: i + 2] == "|" else 1
+        elif ch == "&" and command[i + 1: i + 2] == "&":
             segments.append("".join(current))
             current = []
             i += 2
@@ -211,6 +251,8 @@ def _match_protected_path(tokens: list[str]) -> str | None:
         if _DRIVE_ROOT_RE.fullmatch(norm):
             return t
         if norm in _PROTECTED_BARE or norm in _PROTECTED_PATHS:
+            return t
+        if _basename(norm) in _PROTECTED_PATHS:
             return t
     return None
 
@@ -280,7 +322,20 @@ def check_command(command: str) -> GuardResult:
     if not command or not command.strip():
         return GuardResult(Verdict.BLOCK, "empty command", "empty_command")
 
-    segments = _split_segments(command.replace("`", ""))
+    normalized = command.replace("`", "")
+
+    nested = _extract_nested(normalized)
+    for inner in nested:
+        if inner.strip():
+            inner_result = check_command(inner)
+            if inner_result.verdict is Verdict.BLOCK:
+                return GuardResult(
+                    Verdict.BLOCK,
+                    f"nested expression contains a blocked command: {inner_result.reason}",
+                    "nested_blocked_verb",
+                )
+
+    segments = _split_segments(normalized)
     if not segments:
         return GuardResult(Verdict.BLOCK, "command has no runnable segment", "unparseable")
 
@@ -289,6 +344,13 @@ def check_command(command: str) -> GuardResult:
     for r in results:
         if r.verdict is Verdict.BLOCK:
             return r
+
+    if nested:
+        return GuardResult(
+            Verdict.CONFIRM,
+            "contains a $()/@()/&{} expression the guard can't fully verify",
+            "nested_expression",
+        )
 
     if all(r.verdict is Verdict.ALLOW for r in results):
         return results[0]

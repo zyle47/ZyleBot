@@ -17,10 +17,11 @@
 - `app/db.py` — raw sqlite3, no ORM: `conversations` + `messages`, WAL, guarded in-code migrations.
 - `app/config.py` — pydantic-settings `settings` singleton; defaults here, `.env` overrides.
 - `app/tools/` — `@tool` registry; SAFE (fs / system / web) vs CONFIRM_REQUIRED (write_file, append_file, make_directory, run_command).
+- `app/command_guard.py` — fail-closed classifier for `run_command`: BLOCK (refused unconditionally inside `run_command` itself, no override) / CONFIRM (today's human gate, the default) / ALLOW (known read-only, lets `agent_loop._needs_confirmation` skip the confirm prompt). Rules live in code, not `.env` — deliberately not a tunable. Recursively unpacks `$()`/`@()`/`&{}` PowerShell subexpressions so a destructive verb can't hide inside an otherwise-safe command; any such nesting is capped at CONFIRM even when benign.
 - `app/static/` + `app/templates/` — no-build vanilla JS/CSS/HTML; `app.js` parses SSE manually (fetch reader, since endpoints are POST).
   Jinja inheritance: `base.html` → `index.html` (app shell) and `base.html` → `page.html` → `product/*.html` (content pages); shared footer partial `_footer.html`; `style.css` (app) + `pages.css` (content pages only).
 - `app/sse.py` / `models.py` / `platform_info.py` / `stt.py` — SSE framing · request DTOs · shell selection · faster-whisper STT.
-- `.claude/agents/` + `.codex/agents/` — aligned specialist roles in each tool's native format. Codex pins Luna/medium for backend + frontend, Mini/high for database, Mini/low for verifier, and Sol/high read-only for reviewer; the agent files are the source of truth. `.codex/config.toml` makes `CLAUDE.md` their shared project instruction source.
+- `.claude/agents/` + `.codex/agents/` — opt-in specialist roles: no subagent is spawned unless Nemanja explicitly requests agents, delegation, or parallel work in that request. Codex pins Luna/medium for backend + frontend, Mini/high for database, Mini/low for verifier, and Sol/high read-only for reviewer; the agent files are the source of truth. `.codex/config.toml` makes `CLAUDE.md` their shared project instruction source.
 
 ## What exists (all working, all committed)
 
@@ -29,15 +30,17 @@ flow (survives page reload) · SQLite per-conversation memory, auto-titles, cont
 (DuckDuckGo search, offset-paginated `fetch_url`, weather) · in-chat model switching via `lms` CLI ·
 LM Studio health polling + in-app ▶ start-server button · voice input (faster-whisper on CPU, so it
 never competes for VRAM) · image input (client-side downscale, persisted per message) · dark neon UI
-with website-style footer (Product column links to real `/product/*` pages) · cross-platform shell (PowerShell/bash).
+with website-style footer (Product column links to real `/product/*` pages) · cross-platform shell (PowerShell/bash) ·
+three-tier command guard in front of `run_command` (BLOCK/CONFIRM/ALLOW — see `app/command_guard.py`).
 
 Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Belgrade" triggers tools — or dispatch the `verifier` agent.
 
 ## Status (2026-07-11)
 
 - Everything above is committed (through `aabd63f`). Uncommitted: current-state docs, aligned Claude/Codex specialist definitions, and project-scoped Codex configuration; the redundant root `AGENTS.md` was removed in favor of the `CLAUDE.md` fallback.
-- Uncommitted (2026-07-11): **product pages + Jinja base layout** — new `app/pages.py` (all HTML routes moved out of `main.py`), `templates/base.html`/`page.html`/`_footer.html`, 4 pages under `templates/product/`, `static/pages.css`; footer Product links renamed (Agent Loop / Tool Arsenal / Model Control / Approval Gate) and wired; `static/footer_demo.html` deleted (superseded by `_footer.html`). Resources/About footer links still dead anchors — planned next.
-- Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys.
+- Uncommitted (2026-07-11): **product/about pages + Jinja base layout** — `app/pages.py` owns all HTML routes; shared layout lives in `templates/base.html`/`page.html`/`_footer.html`. The 4 long-form pages under `templates/product/` are wired, and the concise implementation-grounded `templates/about/how_it_works.html` is routed at `/about/how-it-works`. The footer GitHub link uses an inline mark and the configured remote `https://github.com/zyle47/ZyleBot`; README, LM Studio, Docs, Privacy, and Changelog remain dead anchors. `static/footer_demo.html` was deleted (superseded by `_footer.html`).
+- Uncommitted (2026-07-11): **command guard for `run_command`** — new `app/command_guard.py` (`check_command`, stdlib-only, no new dependency) classifies every shell command as BLOCK/CONFIRM/ALLOW; wired into `app/tools/action_tools.py` (`run_command` refuses BLOCK before `subprocess.run`, updated tool description, logs every verdict) and `app/agent_loop.py` (`_needs_confirmation` lets only ALLOW-verdict `run_command` calls skip the human confirm gate — every other CONFIRM_REQUIRED tool, and BLOCK/CONFIRM verdicts on `run_command`, behave exactly as before). Table-driven test suite at `app/tests/test_command_guard.py` (~124 cases, stdlib `unittest`, all green). Went through two review rounds before landing: code-reviewer first caught a critical gap where a destructive verb hidden inside a PowerShell `$(...)` subexpression resolved to ALLOW (fixed by recursively classifying extracted subexpression content and capping any nested-syntax command at CONFIRM), plus `.env` being readable unconfirmed (fixed, then hardened further after re-review found the fix only matched the bare literal token and missed `./.env`-style paths — now matches by basename). See `app/command_guard.py`'s module docstring and comments for the accepted, deliberately out-of-scope limitations (dynamically-built command strings, control-flow-wrapped blocked verbs, `?`/`[...]` wildcards, `python3`/`ipython`) — the threat model is a confused local model writing obviously-destructive commands, not a determined adversary.
+- Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys. Possible follow-up worth a deliberate decision (not yet built): narrow the ALLOW tier so `cat`/`type`/`Get-Content` (which can read arbitrary file content, not just enumerate) require confirmation even for non-protected paths — currently accepted as-is since it matches the original spec and CONFIRM was always the fallback before this feature existed.
 
 ## Gotchas — expensive lessons, keep these
 
