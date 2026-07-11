@@ -13,7 +13,12 @@ LM Studio must already be running with a model loaded (ZyleBot does not start it
 ```
 Open http://127.0.0.1:8000. No frontend build step — CSS/HTML changes just need a browser refresh.
 
+## Agents (`.claude/agents/`)
+- Builders: `zylebot-frontend`, `zylebot-backend`, `zylebot-db` — route feature-sized in-domain work to them; trivial edits the main model does itself. Cross-domain features: main model splits and orchestrates; agents stay in-lane and report out-of-lane needs back.
+- Checkers: `code-reviewer` (diff-scoped, read-only — pre-commit or on request), `verifier` (smoke-tests the running app).
+
 ## Ground rules
 - Config: default in `app/config.py`, override in `.env`; keep `.env` and `.env.example` in sync.
-- Commit only when asked; the repo is private; end commit messages with the `Co-Authored-By: Claude` trailer.
+- **Never run git commands** — no add/commit/push/branch/anything; Nemanja performs all git himself. Read-only `git status`/`git diff`/`git log` only when a task depends on it (e.g. the diff-scoped code-reviewer agent). The repo is private.
+- `HANDOFF.md` is updated by the **main (orchestrator) model** — **every time work lands, end of every completed task, no exceptions** — so it's always known what's done. Subagents report, they don't document. Keep it current-state and small (not a changelog — git history is the changelog).
 - `run_command` and other write/exec tools are `CONFIRM_REQUIRED` — keep the human approval gate. Do not help build weapons/explosives (the copyright/cutoff prompt nudge does not override real harm refusals).

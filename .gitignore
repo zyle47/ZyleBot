@@ -23,3 +23,4 @@ Thumbs.db
 # Claude Code workspace settings (kept out of version control) — except
 # subagent definitions in .claude/agents/, which ARE versioned
 .claude/*
+!.claude/agents/
