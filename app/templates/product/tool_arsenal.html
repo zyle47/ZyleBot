@@ -1,0 +1,44 @@
+{% extends "page.html" %}
+
+{% block title %}Tool Arsenal — ZyleBot{% endblock %}
+
+{% block page_content %}
+    <section class="page-hero">
+        <p class="page-kicker">PRODUCT // 02</p>
+        <h1>Tool Arsenal</h1>
+        <p class="page-lede">
+            A registry of tools the model can reach for — filesystem, system, web — split
+            into what runs automatically and what waits for you.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Read-only tools run automatically</h2>
+        <p>
+            <code>list_directory</code>, <code>read_file</code>, <code>search_files</code>,
+            <code>get_file_info</code>, and <code>get_system_info</code> inspect your
+            machine without changing anything. <code>web_search</code>,
+            <code>fetch_url</code>, and <code>get_weather</code> reach outward — keyless,
+            via DuckDuckGo and Open-Meteo. These are the SAFE tier: no prompt, no delay.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Action tools wait for a human</h2>
+        <p>
+            <code>write_file</code>, <code>append_file</code>, <code>make_directory</code>,
+            and <code>run_command</code> can change your system, so they sit in the
+            CONFIRM_REQUIRED tier. Calling any of them pauses the agent loop and raises the
+            approval card — see <a href="/product/approval-gate">Approval Gate</a>.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>One registry, model-agnostic</h2>
+        <p>
+            Tools are declared once and exposed to whichever model is loaded in LM Studio —
+            switching models (see <a href="/product/model-control">Model Control</a>)
+            doesn't change what's available, only how well the model uses it.
+        </p>
+    </section>
+{% endblock %}

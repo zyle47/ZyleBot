@@ -1,0 +1,44 @@
+{% extends "page.html" %}
+
+{% block title %}Approval Gate — ZyleBot{% endblock %}
+
+{% block page_content %}
+    <section class="page-hero">
+        <p class="page-kicker">PRODUCT // 04</p>
+        <h1>Approval Gate</h1>
+        <p class="page-lede">
+            Nothing that touches your files or your shell runs without you saying yes,
+            first.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>The gate, exactly</h2>
+        <p>
+            When the agent loop wants to call a CONFIRM_REQUIRED tool —
+            <code>write_file</code>, <code>append_file</code>, <code>make_directory</code>,
+            <code>run_command</code> — the turn pauses and a card appears showing the exact
+            tool name and the exact arguments it intends to run. Nothing is inferred or
+            summarized; what you see is what would execute.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Approve or deny</h2>
+        <p>
+            Approve resumes the loop with that one call executed. Deny resumes it without
+            running anything, and the model continues from there knowing it was refused.
+            Either way, the decision is yours alone — read-only tools never reach this gate
+            at all.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Survives a reload</h2>
+        <p>
+            Close the tab mid-approval and reopen it — the pending confirmation re-renders
+            exactly as you left it. The loop is genuinely paused, not just visually paused,
+            so a refresh can't be used to skip the gate.
+        </p>
+    </section>
+{% endblock %}

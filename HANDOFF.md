@@ -4,12 +4,13 @@
 > time. **The main (orchestrator) model updates this file every time work lands** — subagents
 > report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-11**.
 >
-> Companions: `CLAUDE.md` (always-loaded rules + agent routing), `README.md` (user-facing setup/tools),
-> `AGENTS.md` (same ground rules for non-Claude tools, e.g. Cline).
+> Companions: `CLAUDE.md` (shared project rules + Claude agent routing), `README.md` (user-facing setup/tools),
+> `.codex/config.toml` + `.codex/agents/` (project-scoped Codex configuration and specialist roles).
 
 ## Where things live
 
-- `app/main.py` — FastAPI app, lifespan, all routes; `/static/*` served no-cache.
+- `app/main.py` — FastAPI app, lifespan, all `/api/*` routes; `/static/*` served no-cache.
+- `app/pages.py` — all HTML routes (Jinja): `/` chat shell + `/product/*` pages; future footer pages (resources/about) go here.
 - `app/agent_loop.py` — ReAct multi-step loop; pause/resume for tool confirmations; vision mode; empty-content fallbacks.
 - `app/llm_client.py` — the ONLY module that knows LM Studio's wire format (streaming, tool-call deltas, context detection).
 - `app/model_manager.py` — `models.json` aliases; drives the `lms` CLI (load/unload models, start server).
@@ -17,8 +18,9 @@
 - `app/config.py` — pydantic-settings `settings` singleton; defaults here, `.env` overrides.
 - `app/tools/` — `@tool` registry; SAFE (fs / system / web) vs CONFIRM_REQUIRED (write_file, append_file, make_directory, run_command).
 - `app/static/` + `app/templates/` — no-build vanilla JS/CSS/HTML; `app.js` parses SSE manually (fetch reader, since endpoints are POST).
+  Jinja inheritance: `base.html` → `index.html` (app shell) and `base.html` → `page.html` → `product/*.html` (content pages); shared footer partial `_footer.html`; `style.css` (app) + `pages.css` (content pages only).
 - `app/sse.py` / `models.py` / `platform_info.py` / `stt.py` — SSE framing · request DTOs · shell selection · faster-whisper STT.
-- `.claude/agents/` — subagent roster; **per-subsystem invariants live in those files** + the code-reviewer's checklist, not duplicated here.
+- `.claude/agents/` + `.codex/agents/` — aligned specialist roles in each tool's native format. Codex pins Luna/medium for backend + frontend, Mini/high for database, Mini/low for verifier, and Sol/high read-only for reviewer; the agent files are the source of truth. `.codex/config.toml` makes `CLAUDE.md` their shared project instruction source.
 
 ## What exists (all working, all committed)
 
@@ -27,13 +29,14 @@ flow (survives page reload) · SQLite per-conversation memory, auto-titles, cont
 (DuckDuckGo search, offset-paginated `fetch_url`, weather) · in-chat model switching via `lms` CLI ·
 LM Studio health polling + in-app ▶ start-server button · voice input (faster-whisper on CPU, so it
 never competes for VRAM) · image input (client-side downscale, persisted per message) · dark neon UI
-with website-style footer · cross-platform shell (PowerShell/bash).
+with website-style footer (Product column links to real `/product/*` pages) · cross-platform shell (PowerShell/bash).
 
 Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Belgrade" triggers tools — or dispatch the `verifier` agent.
 
 ## Status (2026-07-11)
 
-- Everything above is committed (through `aabd63f`). Uncommitted: this doc trim, `CLAUDE.md` tweak, untracked `AGENTS.md`.
+- Everything above is committed (through `aabd63f`). Uncommitted: current-state docs, aligned Claude/Codex specialist definitions, and project-scoped Codex configuration; the redundant root `AGENTS.md` was removed in favor of the `CLAUDE.md` fallback.
+- Uncommitted (2026-07-11): **product pages + Jinja base layout** — new `app/pages.py` (all HTML routes moved out of `main.py`), `templates/base.html`/`page.html`/`_footer.html`, 4 pages under `templates/product/`, `static/pages.css`; footer Product links renamed (Agent Loop / Tool Arsenal / Model Control / Approval Gate) and wired; `static/footer_demo.html` deleted (superseded by `_footer.html`). Resources/About footer links still dead anchors — planned next.
 - Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys.
 
 ## Gotchas — expensive lessons, keep these
@@ -46,6 +49,7 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
 - **Windows console is cp1252**: set `PYTHONUTF8=1` for anything printing model output.
 - **Config keys** go in `config.py` + `.env` + `.env.example` — all three, every time (past bug).
 - **Steering the local 9B**: narrow scope, exact target, pinned output format, one step at a time.
+- **Content pages vs app shell**: `app.js` hard-crashes without the chat DOM — it loads only via `index.html`'s `scripts` block, never on `page.html` descendants. `style.css` sets `body { overflow: hidden }` for the app layout; content pages scroll only because `pages.css` overrides it via `body.page`.
 
 ## Key facts
 

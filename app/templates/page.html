@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block body_class %}page{% endblock %}
+
+{% block head_extra %}
+    <link rel="stylesheet" href="/static/pages.css">
+{% endblock %}
+
+{% block content %}
+    <div class="page-shell">
+        <header class="page-header">
+            <a class="brand" href="/"><span class="brand-glyph" aria-hidden="true">Z/</span>Zyle<span>Bot</span></a>
+            <a class="page-back" href="/">&gt;_ back to console</a>
+        </header>
+        <main class="page-main">
+            {% block page_content %}{% endblock %}
+        </main>
+        {% include "_footer.html" %}
+    </div>
+{% endblock %}

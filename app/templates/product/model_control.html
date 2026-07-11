@@ -1,0 +1,42 @@
+{% extends "page.html" %}
+
+{% block title %}Model Control — ZyleBot{% endblock %}
+
+{% block page_content %}
+    <section class="page-hero">
+        <p class="page-kicker">PRODUCT // 03</p>
+        <h1>Model Control</h1>
+        <p class="page-lede">
+            Swap the loaded model from the header dropdown — no config edit, no restart.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Switching without leaving the chat</h2>
+        <p>
+            The model dropdown drives the <code>lms</code> CLI directly, loading and
+            unloading models in LM Studio on your behalf. Aliases and per-model context
+            limits live in <code>models.json</code> — pick a friendly name, ZyleBot resolves
+            the real model id underneath.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>The context gauge</h2>
+        <p>
+            The header bar tracks real token usage against the loaded model's context
+            window, turning amber at 70% and red at 90%. It's read from
+            <code>contextUsed</code> on every poll, so a routine health check never wipes
+            it mid-conversation.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Start the server from the app</h2>
+        <p>
+            If LM Studio's server isn't running, the header shows a <em>Start server</em>
+            button that runs <code>lms server start</code> for you — one less window to
+            keep open.
+        </p>
+    </section>
+{% endblock %}

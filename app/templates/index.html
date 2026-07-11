@@ -1,13 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#050807">
-    <title>ZyleBot</title>
-    <link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
+{% extends "base.html" %}
+
+{% block content %}
     <div id="app">
         <aside id="sidebar">
             <div id="sidebar-head">
@@ -38,53 +31,11 @@
                 <button type="submit" disabled>Send</button>
             </form>
 
-            <footer class="system-footer">
-                <div class="footer-main">
-                    <div class="footer-identity">
-                        <span class="footer-monogram" aria-hidden="true">Z</span>
-                        <div class="footer-identity-copy">
-                            <strong>ZyleBot <span>// local core</span></strong>
-                            <p>Local intelligence. Your machine. Your rules.</p>
-                            <div class="footer-principles" aria-label="Core principles">
-                                <span><i class="signal-dot"></i> Local runtime</span>
-                                <span><i aria-hidden="true">◇</i> Private by design</span>
-                                <span><i aria-hidden="true">⌁</i> Human-approved actions</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <nav class="footer-link-group links-col" aria-label="Product">
-                        <h3>Product</h3>
-                        <a href="#features">Features</a>
-                        <a href="#tools">Tools</a>
-                        <a href="#models">Models</a>
-                        <a href="#confirmations">Confirmations</a>
-                    </nav>
-
-                    <nav class="footer-link-group resources-col" aria-label="Resources">
-                        <h3>Resources</h3>
-                        <a href="#readme">README</a>
-                        <a href="#github">GitHub</a>
-                        <a href="#lmstudio">LM Studio</a>
-                        <a href="#docs">Docs</a>
-                    </nav>
-
-                    <nav class="footer-link-group about-col" aria-label="About">
-                        <h3>About</h3>
-                        <a href="#privacy">Privacy</a>
-                        <a href="#how-it-works">How it works</a>
-                        <a href="#changelog">Changelog</a>
-                    </nav>
-                </div>
-
-                <div class="footer-rail">
-                    <span class="rail-code">SYS.2026 // ZYLE</span>
-                    <span class="rail-message">Data stays on this machine</span>
-                    <span class="rail-state"><i class="signal-dot"></i> Local mode</span>
-                </div>
-            </footer>
+            {% include "_footer.html" %}
         </main>
     </div>
+{% endblock %}
+
+{% block scripts %}
     <script src="/static/app.js"></script>
-</body>
-</html>
+{% endblock %}

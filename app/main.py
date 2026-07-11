@@ -8,9 +8,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.requests import Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
-from app import agent_loop, db, llm_client, model_manager, stt
+from app import agent_loop, db, llm_client, model_manager, pages, stt
 from app.config import settings
 from app.models import ChatRequest, ConfirmRequest, ModelRequest
 from app.sse import SSEEvent
@@ -44,7 +43,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="ZyleBot", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
+app.include_router(pages.router)
 
 
 @app.middleware("http")
@@ -56,11 +55,6 @@ async def revalidate_static(request: Request, call_next):
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache"
     return response
-
-
-@app.get("/")
-async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
 
 
 @app.get("/api/health")

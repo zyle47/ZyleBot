@@ -24,3 +24,5 @@ Thumbs.db
 # subagent definitions in .claude/agents/, which ARE versioned
 .claude/*
 !.claude/agents/
+.codex/*
+!.codex/agents/

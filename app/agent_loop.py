@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any
 
 from app import db, llm_client
+from app.command_guard import Verdict, check_command
 from app.config import settings
 from app.platform_info import OS_NAME, SHELL_NAME
 from app.sse import SSEEvent
@@ -85,6 +86,16 @@ def _fallback_from_tool_results(messages: list[dict[str, Any]]) -> str:
                 return f"Here's what I found:\n{lines}"
             return f"Here's what I found:\n{json.dumps(data, indent=2)[:800]}"
     return "I wasn't able to produce a response for that. Please try rephrasing."
+
+
+def _needs_confirmation(tc: dict[str, Any]) -> bool:
+    if get_tool_risk_tier(tc["name"]) != RiskTier.CONFIRM_REQUIRED:
+        return False
+    if tc["name"] == "run_command":
+        command = (tc.get("arguments") or {}).get("command", "")
+        if check_command(command).verdict is Verdict.ALLOW:
+            return False
+    return True
 
 
 def _cancel_pending(conversation_id: int) -> None:
@@ -280,10 +291,7 @@ async def _react_loop(
 
         # If any requested tool needs confirmation, pause the whole turn: mark the
         # message pending and hand off to the UI. The turn resumes via /confirm.
-        needs_confirm = [
-            tc for tc in tool_calls
-            if get_tool_risk_tier(tc["name"]) == RiskTier.CONFIRM_REQUIRED
-        ]
+        needs_confirm = [tc for tc in tool_calls if _needs_confirmation(tc)]
         if needs_confirm:
             db.set_message_status(msg_id, "pending_confirmation")
             yield SSEEvent(

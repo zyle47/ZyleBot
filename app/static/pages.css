@@ -1,0 +1,141 @@
+/* Content-page styles (product pages, and future static pages).
+   Loaded only by page.html via head_extra — style.css owns the app shell,
+   this owns everything under body.page. Reuses :root vars from style.css. */
+
+/* style.css sets body { overflow: hidden } for the fixed-height app layout;
+   content pages need to scroll normally. */
+body.page { overflow-y: auto; }
+
+.page-shell {
+    position: relative;
+    z-index: 1; /* body::before is a fixed CRT-scanline overlay at z-index 2 */
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    max-width: 920px;
+    margin-inline: auto;
+    padding: clamp(1.2rem, 3vw, 2.4rem);
+}
+
+.page-main { flex: 1; } /* pins the footer to the bottom on short pages */
+
+/* --- Header --- */
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 46px;
+    margin-bottom: clamp(1.6rem, 4vw, 3rem);
+    padding-bottom: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+
+/* .brand / .brand-glyph styles come from style.css */
+
+.page-back {
+    color: var(--green-bright);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.page-back:hover { color: var(--green); text-shadow: 0 0 8px var(--green); }
+
+/* --- Hero --- */
+.page-hero { margin-bottom: clamp(1.8rem, 4vw, 3rem); }
+
+.page-kicker {
+    margin: 0 0 0.5rem;
+    color: rgba(103, 255, 183, 0.55);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+.page-hero h1 {
+    margin: 0 0 0.7rem;
+    color: var(--fg);
+    font-family: var(--font-mono);
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-shadow: 0 0 18px rgba(103, 255, 183, 0.22);
+}
+
+.page-lede {
+    max-width: 62ch;
+    margin: 0;
+    color: var(--muted);
+    font-size: clamp(0.95rem, 1.6vw, 1.08rem);
+    line-height: 1.6;
+}
+
+/* --- Prose sections, echoing the .system-footer card recipe --- */
+.page-section {
+    margin-bottom: 1.1rem;
+    padding: 1.1rem 1.25rem;
+    border: 1px solid rgba(103, 255, 183, 0.2);
+    border-radius: 2px;
+    background:
+        linear-gradient(110deg, rgba(103, 255, 183, 0.045), transparent 34%),
+        linear-gradient(290deg, rgba(255, 60, 172, 0.035), transparent 30%),
+        rgba(4, 10, 8, 0.9);
+    box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.16);
+}
+
+.page-section h2 {
+    margin: 0 0 0.6rem;
+    color: var(--green-bright);
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 650;
+    letter-spacing: 0.01em;
+}
+
+.page-section p {
+    margin: 0 0 0.7rem;
+    color: #cfe6de;
+    line-height: 1.65;
+}
+
+.page-section p:last-child { margin-bottom: 0; }
+
+.page-section ul {
+    margin: 0 0 0.7rem;
+    padding-left: 1.2rem;
+    color: #cfe6de;
+    line-height: 1.65;
+}
+
+.page-section a {
+    color: var(--pink-bright);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 139, 208, 0.35);
+    transition: color 160ms ease, border-color 160ms ease;
+}
+
+.page-section a:hover { color: #fff; border-color: rgba(255, 139, 208, 0.8); }
+
+.page-section code {
+    padding: 0.1rem 0.35rem;
+    border: 1px solid rgba(103, 255, 183, 0.22);
+    border-radius: 2px;
+    color: var(--green-bright);
+    background: rgba(103, 255, 183, 0.07);
+    font-family: var(--font-mono);
+    font-size: 0.86em;
+}
+
+/* --- Responsive --- */
+@media (max-width: 680px) {
+    .page-shell { padding: 1rem; }
+    .page-header { margin-bottom: 1.5rem; }
+    .page-hero h1 { font-size: 1.6rem; }
+    .page-section { padding: 0.9rem 1rem; }
+}

@@ -13,9 +13,10 @@ LM Studio must already be running with a model loaded (ZyleBot does not start it
 ```
 Open http://127.0.0.1:8000. No frontend build step — CSS/HTML changes just need a browser refresh.
 
-## Agents (`.claude/agents/`)
-- Builders: `zylebot-frontend`, `zylebot-backend`, `zylebot-db` — route feature-sized in-domain work to them; trivial edits the main model does itself. Cross-domain features: main model splits and orchestrates; agents stay in-lane and report out-of-lane needs back.
-- Checkers: `code-reviewer` (diff-scoped, read-only — pre-commit or on request), `verifier` (smoke-tests the running app).
+## Specialist routing
+- Claude definitions live in `.claude/agents/`: builders `zylebot-frontend`, `zylebot-backend`, `zylebot-db`; checkers `code-reviewer`, `verifier`.
+- Codex definitions live in `.codex/agents/`: builders `frontend`, `backend`, `database`; checkers `reviewer`, `verifier`.
+- Route feature-sized work to the matching specialist; the main orchestrator handles trivial and small edits, splits cross-domain work, and coordinates out-of-lane follow-up. Use the reviewer after implementation and the verifier for proportional runtime checks.
 
 ## Ground rules
 - Config: default in `app/config.py`, override in `.env`; keep `.env` and `.env.example` in sync.

@@ -1,10 +1,14 @@
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any
 
+from app.command_guard import Verdict, check_command
 from app.config import settings
 from app.platform_info import SHELL_NAME, shell_argv
 from app.tools.base import RiskTier, tool
+
+logger = logging.getLogger("zylebot.action_tools")
 
 
 def _resolve(path: str) -> Path:
@@ -90,8 +94,10 @@ def make_directory(path: str) -> dict[str, Any]:
     name="run_command",
     description=(
         f"Run a shell command in the local machine's native shell ({SHELL_NAME}) and "
-        "return its output. Powerful and unrestricted — can read, modify, or delete "
-        "anything the user can. Use only when the user clearly wants an action performed, "
+        "return its output. Can read, modify, or run most things the user can, but "
+        "destructive commands are refused outright — deleting/formatting, killing or "
+        "stopping processes, elevation, and encoded or nested-shell execution will not "
+        "run. Use only when the user clearly wants an action performed, "
         f"and write commands for {SHELL_NAME}."
     ),
     parameters_schema={
@@ -108,6 +114,18 @@ def make_directory(path: str) -> dict[str, Any]:
     risk_tier=RiskTier.CONFIRM_REQUIRED,
 )
 def run_command(command: str, cwd: str | None = None) -> dict[str, Any]:
+    verdict = check_command(command)
+    logger.info(
+        "command_guard verdict=%s rule=%s command=%r",
+        verdict.verdict.value, verdict.rule, command,
+    )
+    if verdict.verdict is Verdict.BLOCK:
+        return {
+            "error": "blocked_by_command_guard",
+            "reason": verdict.reason,
+            "rule": verdict.rule,
+        }
+
     workdir = None
     if cwd:
         wd = _resolve(cwd)

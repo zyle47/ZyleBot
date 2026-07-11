@@ -1,0 +1,56 @@
+{% extends "page.html" %}
+
+{% block title %}Agent Loop — ZyleBot{% endblock %}
+
+{% block page_content %}
+    <section class="page-hero">
+        <p class="page-kicker">PRODUCT // 01</p>
+        <h1>Agent Loop</h1>
+        <p class="page-lede">
+            One request in, a chain of reasoning and tool calls out — streamed to your
+            screen as it happens, not after the fact.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Multi-step ReAct, not a single round-trip</h2>
+        <p>
+            ZyleBot doesn't just answer — it reasons, calls a tool, reads the result, and
+            decides whether to call another one, up to <code>AGENT_MAX_STEPS</code> steps
+            per turn. A question like "weather in Belgrade" can trigger a search, a fetch,
+            and a synthesis step before you see a final answer. Identical repeat calls are
+            skipped, and if the step cap is hit the model is forced to answer from what it
+            already gathered — you never get stuck in a silent loop.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Reasoning streamed live, over SSE</h2>
+        <p>
+            The model's <code>reasoning_content</code> and its <code>content</code> are two
+            separate channels, streamed token-by-token over server-sent events as they're
+            generated. Reasoning renders dimmed and collapsible so you can watch the model
+            think without it crowding the actual answer.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Pauses for you, not around you</h2>
+        <p>
+            When a step needs a risky tool, the loop doesn't guess — it pauses mid-turn and
+            waits for your Approve or Deny. Nothing runs until you say so. See
+            <a href="/product/approval-gate">Approval Gate</a> for how that gate works.
+        </p>
+    </section>
+
+    <section class="page-section">
+        <h2>Voice and vision, same loop</h2>
+        <p>
+            Speak instead of type — audio is transcribed locally by
+            <code>faster-whisper</code> running on CPU, so it never competes with the model
+            for VRAM. Paste an image and the loop switches to vision mode for that turn.
+            Every conversation, including its images, is persisted to SQLite so history
+            survives a restart.
+        </p>
+    </section>
+{% endblock %}
