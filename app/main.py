@@ -66,10 +66,15 @@ async def health():
         await llm_client.get_loaded_context_length(force_refresh=True) if reachable else None
     )
     active = llm_client.get_active_model()
+    # Report what LM Studio *actually* has loaded — the server can be up with no
+    # model in VRAM, and the active (default) model must not be mistaken for it.
+    loaded = await llm_client.detect_loaded_model() if reachable else None
     return {
         "lmstudio_reachable": reachable,
         "model": active,
         "model_alias": model_manager.get_alias(active),
+        "loaded_model": loaded,
+        "loaded_model_alias": model_manager.get_alias(loaded) if loaded else None,
         "context_length": context_length,
     }
 
@@ -100,6 +105,16 @@ async def start_server():
     else:
         logger.info("LM Studio server started; no model loaded yet")
     return {"ok": True, "model_loaded": loaded}
+
+
+@app.post("/api/model/unload")
+async def unload_model():
+    """Unload whatever LM Studio has loaded, freeing VRAM. The button click is
+    the human approval (same as model switching)."""
+    result = await asyncio.to_thread(model_manager.unload_all)
+    if not result["ok"]:
+        raise HTTPException(status_code=500, detail=result["error"])
+    return {"ok": True}
 
 
 @app.get("/api/models")

@@ -8,6 +8,7 @@ const fileInput = document.getElementById("file-input");
 const attachmentsEl = document.getElementById("attachments");
 const statusEl = document.getElementById("status");
 const startServerBtn = document.getElementById("start-server-btn");
+const loadModelBtn = document.getElementById("load-model-btn");
 const ctxFill = document.getElementById("context-bar-fill");
 const ctxText = document.getElementById("context-text");
 const convListEl = document.getElementById("conversation-list");
@@ -67,12 +68,13 @@ async function loadModels() {
     }
 }
 
-modelSelect.addEventListener("change", async () => {
-    const model = modelSelect.value;
-    const label = modelSelect.options[modelSelect.selectedIndex].textContent.replace(" ●", "");
-    // Switching now loads the model via LM Studio (unload old + load new), which
+async function switchModel(model) {
+    const opt = [...modelSelect.options].find((o) => o.value === model);
+    const label = (opt ? opt.textContent : model).replace(" ●", "");
+    // Loading swaps the model in LM Studio (unload old + load new), which
     // blocks ~15-30s. Lock the UI and show progress.
     modelSelect.disabled = true;
+    loadModelBtn.disabled = true;
     setComposerEnabled(false);
     statusEl.textContent = `loading ${label}… (this takes ~15-30s)`;
     statusEl.className = "status";
@@ -85,37 +87,84 @@ modelSelect.addEventListener("change", async () => {
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             addBubble("error").textContent =
-                "Failed to switch model: " + (err.detail || res.statusText);
+                "Failed to load model: " + (err.detail || res.statusText);
         }
     } catch (err) {
-        addBubble("error").textContent = "Failed to switch model: " + err.message;
+        addBubble("error").textContent = "Failed to load model: " + err.message;
     }
     modelSelect.disabled = false;
+    loadModelBtn.disabled = false;
     setComposerEnabled(true);
     await refreshHealth();
     await loadModels();
-});
+}
+
+modelSelect.addEventListener("change", () => switchModel(modelSelect.value));
+
+// Whether LM Studio actually has a model in VRAM (drives the Load/Unload toggle).
+let modelLoaded = false;
 
 async function refreshHealth() {
     try {
         const res = await fetch("/api/health");
         const data = await res.json();
-        statusEl.textContent = data.lmstudio_reachable
-            ? `connected (${data.model_alias || data.model})`
-            : "LM Studio unreachable";
-        statusEl.className = "status " + (data.lmstudio_reachable ? "ok" : "bad");
+        modelLoaded = !!data.loaded_model;
+        // "connected" only when a model is truly loaded — the server can be up
+        // with nothing in VRAM, and the default model name must not fake it.
+        statusEl.textContent = !data.lmstudio_reachable
+            ? "LM Studio unreachable"
+            : modelLoaded
+              ? `connected (${data.loaded_model_alias || data.loaded_model})`
+              : "server up — no model loaded";
+        statusEl.className =
+            "status " + (!data.lmstudio_reachable ? "bad" : modelLoaded ? "ok" : "warn");
         startServerBtn.hidden = data.lmstudio_reachable;
+        loadModelBtn.hidden = !data.lmstudio_reachable;
+        loadModelBtn.textContent = modelLoaded ? "⏏ Unload model" : "▲ Load model";
+        loadModelBtn.title = modelLoaded
+            ? "Runs `lms unload --all` (frees VRAM)"
+            : "Loads the selected model via `lms load`";
         contextMax = data.context_length ?? null;
         // Redraw with the last-known usage — this runs on a timer now, and
         // resetting to 0 would wipe the gauge mid-conversation.
         updateContextGauge(contextUsed);
     } catch (err) {
-        // ZyleBot's own backend is down — the button can't help here.
+        // ZyleBot's own backend is down — the buttons can't help here.
         statusEl.textContent = "health check failed";
         statusEl.className = "status bad";
         startServerBtn.hidden = true;
+        loadModelBtn.hidden = true;
     }
 }
+
+loadModelBtn.addEventListener("click", async () => {
+    if (!modelLoaded) {
+        // Load whatever the dropdown has selected (falls back to the active model
+        // server-side via /api/model validation).
+        if (!modelSelect.value) {
+            addBubble("error").textContent = "No model available to load — is LM Studio running?";
+            return;
+        }
+        await switchModel(modelSelect.value);
+        return;
+    }
+    loadModelBtn.disabled = true;
+    statusEl.textContent = "unloading model…";
+    statusEl.className = "status";
+    try {
+        const res = await fetch("/api/model/unload", { method: "POST" });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            addBubble("error").textContent =
+                "Failed to unload model: " + (err.detail || res.statusText);
+        }
+    } catch (err) {
+        addBubble("error").textContent = "Failed to unload model: " + err.message;
+    }
+    loadModelBtn.disabled = false;
+    await refreshHealth();
+    await loadModels();
+});
 
 startServerBtn.addEventListener("click", async () => {
     startServerBtn.disabled = true;
@@ -637,6 +686,6 @@ init();
 // page refresh. Skipped while a model switch or server start is in flight —
 // their progress text owns the status line (the disabled control is the flag).
 setInterval(() => {
-    if (modelSelect.disabled || startServerBtn.disabled) return;
+    if (modelSelect.disabled || startServerBtn.disabled || loadModelBtn.disabled) return;
     refreshHealth();
 }, 10000);

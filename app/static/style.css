@@ -327,6 +327,7 @@ header::before {
 }
 
 .status.ok { color: var(--green); }
+.status.warn { color: var(--amber); }
 .status.bad { color: var(--danger); }
 
 .start-server-btn {

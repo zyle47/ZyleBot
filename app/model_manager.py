@@ -71,17 +71,15 @@ def start_server() -> dict[str, Any]:
     return {"ok": True}
 
 
-def load_model(model_id: str, context_length: int | None) -> dict[str, Any]:
-    """Switch LM Studio to `model_id`: unload everything first (so only one model
-    occupies VRAM), then load with the requested context. Blocking — call via a
+def unload_all() -> dict[str, Any]:
+    """Unload every loaded model via `lms unload --all`. Blocking — call via a
     thread from async code. Returns {"ok": bool, "error"?: str}."""
     lms = _lms_path()
     try:
-        # Unload all so we never end up with two models on a single GPU.
         # lms is a Node CLI and emits UTF-8; without an explicit encoding,
         # Windows decodes with the locale codec (cp1252) and crashes on
         # progress-bar bytes it can't map.
-        subprocess.run(
+        proc = subprocess.run(
             [lms, "unload", "--all"],
             capture_output=True,
             text=True,
@@ -89,6 +87,26 @@ def load_model(model_id: str, context_length: int | None) -> dict[str, Any]:
             errors="replace",
             timeout=60,
         )
+    except FileNotFoundError:
+        return {"ok": False, "error": "the 'lms' CLI was not found (is LM Studio installed?)"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "model unload timed out"}
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "unload failed").strip()
+        return {"ok": False, "error": detail[:500]}
+    return {"ok": True}
+
+
+def load_model(model_id: str, context_length: int | None) -> dict[str, Any]:
+    """Switch LM Studio to `model_id`: unload everything first (so only one model
+    occupies VRAM), then load with the requested context. Blocking — call via a
+    thread from async code. Returns {"ok": bool, "error"?: str}."""
+    # Unload all so we never end up with two models on a single GPU. A failure
+    # here is non-fatal — the load below surfaces any real problem.
+    unload_all()
+    lms = _lms_path()
+    try:
         cmd = [lms, "load", model_id, "--gpu", "max", "-y"]
         if context_length:
             cmd += ["-c", str(context_length)]
