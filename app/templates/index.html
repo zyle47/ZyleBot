@@ -13,8 +13,12 @@
             <header>
                 <span id="status" class="status">checking LM Studio...</span>
                 <button id="start-server-btn" class="start-server-btn" title="Runs `lms server start`" hidden>▶ Start server</button>
+                <button id="stop-server-btn" class="start-server-btn" title="Runs `lms server stop`" hidden>■ Stop server</button>
                 <button id="load-model-btn" class="start-server-btn" hidden>▲ Load model</button>
+                <button id="api-key-btn" class="start-server-btn" title="Chat via OpenRouter with your API key instead of LM Studio" hidden>🔑 API key</button>
                 <select id="model-select" class="model-select" title="Active model (switching swaps the loaded model in LM Studio)"></select>
+                <input id="or-model-input" class="model-select" type="search" name="or-model-search" list="or-model-list" placeholder="search OpenRouter models…" autocomplete="off" spellcheck="false" title="Type to search OpenRouter models" hidden />
+                <datalist id="or-model-list"></datalist>
                 <span id="context-gauge" class="context-gauge" title="context window usage">
                     <span id="context-bar-track" class="context-bar-track">
                         <span id="context-bar-fill" class="context-bar-fill"></span>
@@ -35,6 +39,23 @@
             {% include "_footer.html" %}
         </main>
     </div>
+
+    <dialog id="api-key-dialog" class="confirm-card api-key-dialog">
+        <div class="confirm-heading">🔑 Connect to OpenRouter</div>
+        <p id="api-key-hint" class="api-key-hint">
+            Paste your OpenRouter API key. It is checked with OpenRouter, then saved to
+            <code>.env</code> on this machine.
+        </p>
+        {# type=text + CSS masking, NOT type=password: a password field makes
+           Chrome's password manager pair it with the header's model search box
+           as a fake login form and hijack the datalist dropdown. #}
+        <input id="api-key-input" type="text" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" />
+        <div class="confirm-buttons">
+            <button id="api-key-connect" type="button" class="approve">Connect</button>
+            <button id="api-key-cancel" type="button" class="deny">Cancel</button>
+            <span id="api-key-status" class="confirm-status"></span>
+        </div>
+    </dialog>
 {% endblock %}
 
 {% block scripts %}

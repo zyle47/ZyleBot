@@ -12,8 +12,8 @@
 - `app/main.py` — FastAPI app, lifespan, all `/api/*` routes; `/static/*` served no-cache.
 - `app/pages.py` — all HTML routes (Jinja): `/` chat shell + `/product/*`, `/resources/*`, and `/about/*` content pages.
 - `app/agent_loop.py` — ReAct multi-step loop; pause/resume for tool confirmations; vision mode; empty-content fallbacks.
-- `app/llm_client.py` — the ONLY module that knows LM Studio's wire format (streaming, tool-call deltas, context detection).
-- `app/model_manager.py` — `models.json` aliases; drives the `lms` CLI (load/unload models, start server).
+- `app/llm_client.py` — the ONLY module that knows either backend's wire format (LM Studio + OpenRouter, both OpenAI-style streaming; tool-call deltas, context detection). Provider state is **runtime module globals** here (`_provider`, `_openrouter_*`); `.env` is persistence only, read once at startup.
+- `app/model_manager.py` — `models.json` aliases; drives the `lms` CLI (load/unload models, start/stop server).
 - `app/db.py` — raw sqlite3, no ORM: `conversations` + `messages`, WAL, guarded in-code migrations.
 - `app/config.py` — pydantic-settings `settings` singleton; defaults here, `.env` overrides.
 - `app/tools/` — `@tool` registry; SAFE (fs / system / web) vs CONFIRM_REQUIRED (write_file, append_file, make_directory, run_command).
@@ -28,7 +28,18 @@
 Streaming SSE chat with collapsible reasoning blocks · multi-step tool loop with human Approve/Deny
 flow (survives page reload) · SQLite per-conversation memory, auto-titles, context gauge · web tools
 (DuckDuckGo search, offset-paginated `fetch_url`, weather) · in-chat model switching via `lms` CLI ·
-LM Studio health polling + in-app ▶ start-server and ▲ load / ⏏ unload model buttons · voice input (faster-whisper on CPU, so it
+LM Studio health polling + in-app ▶ start / ■ stop server and ▲ load / ⏏ unload model buttons ·
+**OpenRouter cloud mode** (🔑 API key dialog → `POST /api/provider/connect` validates the key via
+OpenRouter's authenticated `GET /key`, caches its `/models` list into a searchable datalist, swaps the
+shared httpx client; ⏏ Disconnect returns to LM Studio, key stays in `.env` for one-click reconnect;
+mode + key + model persist via `persist_env_values()` in `config.py` and auto-resume at startup;
+`OPENROUTER_FREE_ONLY=true` by default — only zero-cost `:free` chat models are listed [~15 live],
+and non-text-output catalog entries like Google Lyria are always excluded via `_is_chat_model`;
+the key input is deliberately NOT `type=password` — that made Chrome's password manager hijack the
+model-search datalist as a fake login form; CSS `-webkit-text-security` masks it instead) ·
+**no-auto-load guard** (`_turn_blocker()` in `main.py` refuses chat/confirm turns via an SSE `error`
+event — before any DB write — when no model is loaded locally or none selected on OpenRouter, so
+LM Studio's JIT load can never trigger silently) · voice input (faster-whisper on CPU, so it
 never competes for VRAM) · image input (client-side downscale, persisted per message) · dark neon UI
 with website-style footer (Product pages plus a styled `/resources/readme` guide) · cross-platform shell (PowerShell/bash) ·
 three-tier command guard in front of `run_command` (BLOCK/CONFIRM/ALLOW — see `app/command_guard.py`) ·
@@ -47,6 +58,18 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
 ## Status (2026-07-19)
 
 - Everything above through the command guard is committed (through `aabd63f`). Uncommitted: current-state docs, aligned Claude/Codex specialist definitions, project-scoped Codex configuration, and the whole Breakout feature (new: `game.html`/`game.css`/`game.js`/`tools/game_tools.py`; edits: `pages.py`, `db.py`, `models.py`, `main.py`, `tools/__init__.py`, `_footer.html`, README).
+
+- **OpenRouter provider + stop server + no-auto-load guard (new, uncommitted).** Edits: `config.py`
+  (provider settings + `persist_env_values`), `llm_client.py` (provider seam), `model_manager.py`
+  (`stop_server`), `models.py` (`ProviderConnectRequest`), `main.py` (provider routes, provider-aware
+  health/models/model, `_turn_blocker`), `index.html`/`app.js`/`style.css` (buttons, `<dialog>`, datalist
+  picker), `.env.example`. Verified live: boot unchanged in LM Studio mode; guard refuses chat with
+  nothing loaded (SSE error, no DB write, no JIT load); bad key → 401 with `.env` untouched; server
+  stop → unreachable → start restores. **Not yet exercised with a real key** (good-key connect, OR
+  chat/tools, disconnect, auto-resume) — Nemanja tests that with his OpenRouter key. The system
+  prompt is provider- and model-aware: `agent_loop.build_system_prompt()` fills an `{origin}`
+  placeholder from `llm_client.get_provider()` + `get_active_model()` (local-via-LM-Studio vs
+  cloud-via-OpenRouter, tools always local either way) — the bot now names its own active model.
 
 - **Breakout is done and verified.** Level 1 remains the classic 60-brick wall. Level 2 is a sparse 16×9
   mosaic (24 regular / 29 Hard / 8 Ultima / 1 Piercer); level 3 uses a 20×12 ZYLE mask
@@ -88,6 +111,8 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
 - **LM Studio ids mutate**: ids silently gain an `@<quant>` suffix once a second quant of the same base model is downloaded — if a model stops resolving, re-check `lms ls` and fix `models.json`.
 - **Windows console is cp1252**: set `PYTHONUTF8=1` for anything printing model output.
 - **Config keys** go in `config.py` + `.env` + `.env.example` — all three, every time (past bug).
+- **OpenRouter mode must never touch LM Studio's native API**: `_fetch_native_models()` early-returns unless provider is lmstudio — it requests an *absolute* URL to the LM Studio origin, so the client's OpenRouter base_url would NOT protect it. Keep that guard if you refactor. Frontend branches everything on `data.provider` from `/api/health`; the lms-CLI endpoints 409 in openrouter mode.
+- **Chat refusals must be SSE, not HTTP errors**: `postAndRead()` in `app.js` never checks `res.ok`, so guard refusals stream `event: error` + `done` on a 200 — an HTTP 4xx would silently break the composer.
 - **Steering the local 9B**: narrow scope, exact target, pinned output format, one step at a time.
 - **Content pages vs app shell**: `app.js` hard-crashes without the chat DOM — it loads only via `index.html`'s `scripts` block, never on `page.html` descendants. `style.css` sets `body { overflow: hidden }` for the app layout; content pages scroll only because `pages.css` overrides it via `body.page`.
 

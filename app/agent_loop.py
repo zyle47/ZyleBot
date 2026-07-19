@@ -15,7 +15,7 @@ from app.tools import RiskTier, execute_tool, get_openai_tool_schemas, get_tool_
 logger = logging.getLogger("zylebot.agent_loop")
 
 _BASE_SYSTEM_PROMPT = (
-    "You are ZyleBot, a helpful local assistant running on the user's computer. "
+    "You are ZyleBot, a helpful assistant {origin}. "
     "Always look into your memory first!"
     "You have read-only tools to inspect the filesystem and system, a get_weather tool, "
     "and tools to search the web (web_search) and read pages (fetch_url).\n"
@@ -42,8 +42,17 @@ def build_system_prompt() -> str:
     """The system prompt is built fresh each turn (never persisted) so config
     changes like USER_NAME take effect immediately. The user's name is the only
     globally-shared fact; there is no cross-conversation memory."""
+    model_name = llm_client.get_active_model() or "an unspecified model"
+    origin = (
+        f"running locally on the user's computer via LM Studio, on the model {model_name}"
+        if llm_client.get_provider() == "lmstudio"
+        else (
+            f"served by the cloud model {model_name} via OpenRouter, with your tools "
+            "executing on the user's computer"
+        )
+    )
     prompt = (
-        f"{_BASE_SYSTEM_PROMPT} You are running on {OS_NAME}; run_command uses "
+        f"{_BASE_SYSTEM_PROMPT.format(origin=origin)} You are running on {OS_NAME}; run_command uses "
         f"{SHELL_NAME}, so write any commands in {SHELL_NAME} syntax. "
         f"Today's date is {date.today().isoformat()}."
     )

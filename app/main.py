@@ -10,8 +10,14 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import agent_loop, db, llm_client, model_manager, pages, stt
-from app.config import settings
-from app.models import ChatRequest, ConfirmRequest, ModelRequest, ScoreSubmit
+from app.config import persist_env_values, settings
+from app.models import (
+    ChatRequest,
+    ConfirmRequest,
+    ModelRequest,
+    ProviderConnectRequest,
+    ScoreSubmit,
+)
 from app.sse import SSEEvent
 
 logging.basicConfig(level=logging.INFO)
@@ -22,21 +28,35 @@ logger = logging.getLogger("zylebot.main")
 async def lifespan(app: FastAPI):
     db.init_db()
     llm_client.init_client()
-    if await llm_client.check_connectivity():
-        logger.info("LM Studio reachable at %s", settings.lmstudio_base_url)
-        # Align the active model with whatever LM Studio actually has loaded, so
-        # the server never diverges from reality (or resets to a stale default).
-        loaded = await llm_client.detect_loaded_model()
-        if loaded:
-            llm_client.set_active_model(loaded)
-            logger.info("Active model synced to loaded: %s", loaded)
-    else:
-        logger.warning(
-            "LM Studio NOT reachable at %s — start it with `lms server start` "
-            "and load a model with `lms load %s`",
-            settings.lmstudio_base_url,
-            settings.lmstudio_model,
-        )
+    # Auto-resume openrouter mode if it was active last run. On any failure
+    # (bad key, offline) fall through to LM Studio WITHOUT rewriting .env — a
+    # transient failure must not silently flip the persisted mode.
+    if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+        try:
+            result = await llm_client.activate_openrouter()
+            logger.info(
+                "Resumed OpenRouter mode (%s models, active: %s)",
+                result["models_count"],
+                result["model"] or "none selected",
+            )
+        except (ValueError, RuntimeError) as exc:
+            logger.warning("Could not resume OpenRouter mode (%s) — falling back to LM Studio", exc)
+    if llm_client.get_provider() == "lmstudio":
+        if await llm_client.check_connectivity():
+            logger.info("LM Studio reachable at %s", settings.lmstudio_base_url)
+            # Align the active model with whatever LM Studio actually has loaded, so
+            # the server never diverges from reality (or resets to a stale default).
+            loaded = await llm_client.detect_loaded_model()
+            if loaded:
+                llm_client.set_active_model(loaded)
+                logger.info("Active model synced to loaded: %s", loaded)
+        else:
+            logger.warning(
+                "LM Studio NOT reachable at %s — start it with `lms server start` "
+                "and load a model with `lms load %s`",
+                settings.lmstudio_base_url,
+                settings.lmstudio_model,
+            )
     yield
     await llm_client.close_client()
 
@@ -59,6 +79,24 @@ async def revalidate_static(request: Request, call_next):
 
 @app.get("/api/health")
 async def health():
+    has_saved_key = bool(llm_client.get_saved_openrouter_key())
+    if llm_client.get_provider() == "openrouter":
+        # No OpenRouter ping here — this is polled every 10s and the key was
+        # validated at connect; a revoked key surfaces on the next chat.
+        model = llm_client.get_active_model()
+        label = next(
+            (m["name"] for m in llm_client.list_openrouter_models() if m["id"] == model),
+            model,
+        )
+        return {
+            "provider": "openrouter",
+            "connected": True,
+            "model": model,
+            "model_label": label or None,
+            "context_length": await llm_client.get_loaded_context_length(),
+            "has_saved_key": has_saved_key,
+        }
+
     reachable = await llm_client.check_connectivity()
     # Force-refresh so changing the context length (or model) in LM Studio is
     # reflected after a browser refresh, without restarting ZyleBot.
@@ -70,19 +108,29 @@ async def health():
     # model in VRAM, and the active (default) model must not be mistaken for it.
     loaded = await llm_client.detect_loaded_model() if reachable else None
     return {
+        "provider": "lmstudio",
         "lmstudio_reachable": reachable,
         "model": active,
         "model_alias": model_manager.get_alias(active),
         "loaded_model": loaded,
         "loaded_model_alias": model_manager.get_alias(loaded) if loaded else None,
         "context_length": context_length,
+        "has_saved_key": has_saved_key,
     }
+
+
+def _require_lmstudio_mode() -> None:
+    """Defense in depth: the lms-CLI endpoints are hidden in openrouter mode,
+    but must also refuse if called directly."""
+    if llm_client.get_provider() != "lmstudio":
+        raise HTTPException(status_code=409, detail="not in LM Studio mode — disconnect first")
 
 
 @app.post("/api/server/start")
 async def start_server():
     """Start LM Studio's local server via the lms CLI. The button click *is* the
     human approval, so no extra confirmation gate (same as model switching)."""
+    _require_lmstudio_mode()
     result = await asyncio.to_thread(model_manager.start_server)
     # Trust reachability over CLI output: the server may need a moment to accept
     # connections, and the CLI can misreport while bootstrapping LM Studio itself.
@@ -107,10 +155,28 @@ async def start_server():
     return {"ok": True, "model_loaded": loaded}
 
 
+@app.post("/api/server/stop")
+async def stop_server():
+    """Stop LM Studio's local server via the lms CLI. The button click is the
+    human approval, same as start."""
+    _require_lmstudio_mode()
+    result = await asyncio.to_thread(model_manager.stop_server)
+    # Mirror start: trust real (un)reachability over CLI output.
+    for _ in range(5):
+        if not await llm_client.check_connectivity():
+            return {"ok": True}
+        await asyncio.sleep(1)
+    raise HTTPException(
+        status_code=502,
+        detail=result.get("error") or "server is still reachable after stop",
+    )
+
+
 @app.post("/api/model/unload")
 async def unload_model():
     """Unload whatever LM Studio has loaded, freeing VRAM. The button click is
     the human approval (same as model switching)."""
+    _require_lmstudio_mode()
     result = await asyncio.to_thread(model_manager.unload_all)
     if not result["ok"]:
         raise HTTPException(status_code=500, detail=result["error"])
@@ -119,10 +185,18 @@ async def unload_model():
 
 @app.get("/api/models")
 async def list_models():
+    if llm_client.get_provider() == "openrouter":
+        # Served from the cache populated at connect — no live OpenRouter call.
+        return {
+            "provider": "openrouter",
+            "active": llm_client.get_active_model(),
+            "models": llm_client.list_openrouter_models(),
+            "free_only": settings.openrouter_free_only,
+        }
     models = await llm_client.list_chat_models()
     for m in models:
         m["alias"] = model_manager.get_alias(m["id"])
-    return {"active": llm_client.get_active_model(), "models": models}
+    return {"provider": "lmstudio", "active": llm_client.get_active_model(), "models": models}
 
 
 @app.post("/api/transcribe")
@@ -141,6 +215,18 @@ async def transcribe(audio: UploadFile = File(...)):
 
 @app.post("/api/model")
 async def set_model(req: ModelRequest):
+    if llm_client.get_provider() == "openrouter":
+        # Cloud model switching is just picking an id — no lms CLI, no VRAM.
+        available = {m["id"] for m in llm_client.list_openrouter_models()}
+        if req.model not in available:
+            raise HTTPException(status_code=400, detail=f"unknown model: {req.model}")
+        llm_client.set_openrouter_model(req.model)
+        persist_env_values({"OPENROUTER_MODEL": req.model})
+        return {
+            "active": req.model,
+            "context_length": await llm_client.get_loaded_context_length(),
+        }
+
     available = {m["id"] for m in await llm_client.list_chat_models()}
     if req.model not in available:
         raise HTTPException(status_code=400, detail=f"unknown model: {req.model}")
@@ -157,6 +243,46 @@ async def set_model(req: ModelRequest):
         "active": llm_client.get_active_model(),
         "context_length": await llm_client.get_loaded_context_length(force_refresh=True),
     }
+
+
+# --- Provider (LM Studio ↔ OpenRouter) ------------------------------------
+
+@app.post("/api/provider/connect")
+async def provider_connect(req: ProviderConnectRequest):
+    """Switch to OpenRouter mode. Empty api_key = reuse the saved key."""
+    new_key = req.api_key.strip()
+    try:
+        result = await llm_client.activate_openrouter(new_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    updates = {"LLM_PROVIDER": "openrouter"}
+    if new_key:  # only persist when a new key was actually entered
+        updates["OPENROUTER_API_KEY"] = new_key
+    persist_env_values(updates)
+    logger.info("Connected to OpenRouter (%s models available)", result["models_count"])
+    return {
+        "ok": True,
+        "provider": "openrouter",
+        "model": result["model"],
+        "models_count": result["models_count"],
+    }
+
+
+@app.post("/api/provider/disconnect")
+async def provider_disconnect():
+    """Back to LM Studio mode. The key stays saved for one-click reconnect."""
+    await llm_client.deactivate_openrouter()
+    persist_env_values({"LLM_PROVIDER": "lmstudio"})
+    # Same re-sync as startup: align the active model with LM Studio's reality.
+    if await llm_client.check_connectivity():
+        loaded = await llm_client.detect_loaded_model()
+        if loaded:
+            llm_client.set_active_model(loaded)
+    logger.info("Disconnected from OpenRouter — back to LM Studio mode")
+    return {"ok": True, "provider": "lmstudio"}
 
 
 # --- Conversations -------------------------------------------------------
@@ -225,11 +351,41 @@ async def _sse_from(agen):
         yield SSEEvent("done").encode()
 
 
+async def _turn_blocker() -> str | None:
+    """Reason the LLM turn cannot start, or None if it can.
+
+    This is the no-auto-load guard: LM Studio's JIT load can only trigger from
+    /chat/completions, so refusing here (before any DB write) means chatting
+    never loads a model behind the user's back.
+    """
+    if llm_client.get_provider() == "openrouter":
+        if not llm_client.get_active_model():
+            return "No OpenRouter model selected — pick one in the header first."
+        return None
+    # Two-step check only to give distinct messages: detect_loaded_model()
+    # returns None for both "unreachable" and "nothing loaded".
+    if not await llm_client.check_connectivity():
+        return "LM Studio is not reachable — start the server first."
+    if await llm_client.detect_loaded_model() is None:
+        return "No model is loaded in LM Studio — load one with the Load model button first."
+    return None
+
+
+async def _refusal_stream(message: str):
+    """SSE refusal using the existing error-bubble contract — the frontend's
+    postAndRead() never checks res.ok, so an HTTP error would break it."""
+    yield SSEEvent("error", {"message": message}).encode()
+    yield SSEEvent("done").encode()
+
+
 @app.post("/api/conversations/{conversation_id}/chat")
 async def chat(conversation_id: int, req: ChatRequest):
     conv = db.get_conversation(conversation_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="conversation not found")
+    blocked = await _turn_blocker()
+    if blocked:
+        return StreamingResponse(_refusal_stream(blocked), media_type="text/event-stream")
     # Auto-title the conversation from its first user message.
     if not db.get_render_messages(conversation_id):
         title = _title_from_message(req.message) if req.message.strip() else "📷 Image"
@@ -245,6 +401,11 @@ async def confirm(conversation_id: int, req: ConfirmRequest):
     conv = db.get_conversation(conversation_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="conversation not found")
+    # confirm() also resumes the LLM after tool execution, so it gets the same
+    # no-auto-load guard as chat().
+    blocked = await _turn_blocker()
+    if blocked:
+        return StreamingResponse(_refusal_stream(blocked), media_type="text/event-stream")
     return StreamingResponse(
         _sse_from(agent_loop.resume_after_confirmation(conversation_id, req.approved)),
         media_type="text/event-stream",

@@ -8,18 +8,33 @@ const fileInput = document.getElementById("file-input");
 const attachmentsEl = document.getElementById("attachments");
 const statusEl = document.getElementById("status");
 const startServerBtn = document.getElementById("start-server-btn");
+const stopServerBtn = document.getElementById("stop-server-btn");
 const loadModelBtn = document.getElementById("load-model-btn");
+const apiKeyBtn = document.getElementById("api-key-btn");
 const ctxFill = document.getElementById("context-bar-fill");
 const ctxText = document.getElementById("context-text");
 const convListEl = document.getElementById("conversation-list");
 const newChatBtn = document.getElementById("new-chat");
 const modelSelect = document.getElementById("model-select");
+const orModelInput = document.getElementById("or-model-input");
+const orModelList = document.getElementById("or-model-list");
+const apiKeyDialog = document.getElementById("api-key-dialog");
+const apiKeyHint = document.getElementById("api-key-hint");
+const apiKeyInput = document.getElementById("api-key-input");
+const apiKeyConnect = document.getElementById("api-key-connect");
+const apiKeyCancel = document.getElementById("api-key-cancel");
+const apiKeyStatus = document.getElementById("api-key-status");
 
 let contextMax = null;
 let contextUsed = 0;
 let currentConversationId = null;
 // Base64 data URLs staged for the next send (from paste or the 📎 button).
 let pendingImages = [];
+// Which backend serves chat: "lmstudio" (local) or "openrouter" (cloud).
+let currentProvider = "lmstudio";
+// Cached OpenRouter model list [{id, name, context_length}] for the datalist.
+let orModels = [];
+let hasSavedKey = false;
 
 // --- Context gauge -------------------------------------------------------
 
@@ -55,6 +70,22 @@ async function loadModels() {
     try {
         const res = await fetch("/api/models");
         const data = await res.json();
+        if (data.provider === "openrouter") {
+            // 300+ models: a datalist filters natively as the user types.
+            orModels = data.models;
+            orModelList.innerHTML = "";
+            for (const m of data.models) {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                opt.label = m.name;
+                orModelList.appendChild(opt);
+            }
+            orModelInput.value = data.active || "";
+            orModelInput.placeholder = data.free_only
+                ? `search free models… (${data.models.length})`
+                : `search OpenRouter models… (${data.models.length})`;
+            return;
+        }
         modelSelect.innerHTML = "";
         for (const m of data.models) {
             const opt = document.createElement("option");
@@ -108,6 +139,28 @@ async function refreshHealth() {
     try {
         const res = await fetch("/api/health");
         const data = await res.json();
+        currentProvider = data.provider || "lmstudio";
+        hasSavedKey = !!data.has_saved_key;
+
+        if (currentProvider === "openrouter") {
+            // Cloud mode: the LM Studio controls make no sense here.
+            statusEl.textContent = data.model
+                ? `openrouter (${data.model_label || data.model})`
+                : "openrouter — no model selected";
+            statusEl.className = "status " + (data.model ? "ok" : "warn");
+            startServerBtn.hidden = true;
+            stopServerBtn.hidden = true;
+            loadModelBtn.hidden = true;
+            modelSelect.hidden = true;
+            orModelInput.hidden = false;
+            apiKeyBtn.hidden = false;
+            apiKeyBtn.textContent = "⏏ Disconnect";
+            apiKeyBtn.title = "Back to the local LM Studio model (the key stays saved)";
+            contextMax = data.context_length ?? null;
+            updateContextGauge(contextUsed);
+            return;
+        }
+
         modelLoaded = !!data.loaded_model;
         // "connected" only when a model is truly loaded — the server can be up
         // with nothing in VRAM, and the default model name must not fake it.
@@ -119,11 +172,17 @@ async function refreshHealth() {
         statusEl.className =
             "status " + (!data.lmstudio_reachable ? "bad" : modelLoaded ? "ok" : "warn");
         startServerBtn.hidden = data.lmstudio_reachable;
+        stopServerBtn.hidden = !data.lmstudio_reachable;
         loadModelBtn.hidden = !data.lmstudio_reachable;
         loadModelBtn.textContent = modelLoaded ? "⏏ Unload model" : "▲ Load model";
         loadModelBtn.title = modelLoaded
             ? "Runs `lms unload --all` (frees VRAM)"
             : "Loads the selected model via `lms load`";
+        modelSelect.hidden = false;
+        orModelInput.hidden = true;
+        apiKeyBtn.hidden = false;
+        apiKeyBtn.textContent = "🔑 API key";
+        apiKeyBtn.title = "Chat via OpenRouter with your API key instead of LM Studio";
         contextMax = data.context_length ?? null;
         // Redraw with the last-known usage — this runs on a timer now, and
         // resetting to 0 would wipe the gauge mid-conversation.
@@ -133,7 +192,10 @@ async function refreshHealth() {
         statusEl.textContent = "health check failed";
         statusEl.className = "status bad";
         startServerBtn.hidden = true;
+        stopServerBtn.hidden = true;
         loadModelBtn.hidden = true;
+        apiKeyBtn.hidden = true;
+        orModelInput.hidden = true;
     }
 }
 
@@ -184,6 +246,124 @@ startServerBtn.addEventListener("click", async () => {
     // Reflect the new state: status goes green, dropdown fills with models.
     await refreshHealth();
     await loadModels();
+});
+
+stopServerBtn.addEventListener("click", async () => {
+    stopServerBtn.disabled = true;
+    statusEl.textContent = "stopping LM Studio server…";
+    statusEl.className = "status";
+    try {
+        const res = await fetch("/api/server/stop", { method: "POST" });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            addBubble("error").textContent =
+                "Failed to stop LM Studio server: " + (err.detail || res.statusText);
+        }
+    } catch (err) {
+        addBubble("error").textContent = "Failed to stop LM Studio server: " + err.message;
+    }
+    stopServerBtn.disabled = false;
+    await refreshHealth();
+    await loadModels();
+});
+
+// --- OpenRouter connect / disconnect -------------------------------------
+
+apiKeyBtn.addEventListener("click", async () => {
+    if (currentProvider === "openrouter") {
+        // "Same principle as unload": disconnect returns to LM Studio mode.
+        apiKeyBtn.disabled = true;
+        statusEl.textContent = "disconnecting from OpenRouter…";
+        statusEl.className = "status";
+        try {
+            const res = await fetch("/api/provider/disconnect", { method: "POST" });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                addBubble("error").textContent =
+                    "Failed to disconnect: " + (err.detail || res.statusText);
+            }
+        } catch (err) {
+            addBubble("error").textContent = "Failed to disconnect: " + err.message;
+        }
+        apiKeyBtn.disabled = false;
+        await refreshHealth();
+        await loadModels();
+        return;
+    }
+    apiKeyInput.value = "";
+    apiKeyInput.placeholder = hasSavedKey ? "leave blank to use saved key" : "sk-or-v1-…";
+    apiKeyStatus.textContent = "";
+    apiKeyDialog.showModal();
+    apiKeyInput.focus();
+});
+
+apiKeyCancel.addEventListener("click", () => apiKeyDialog.close());
+
+async function connectOpenRouter() {
+    apiKeyConnect.disabled = true;
+    apiKeyCancel.disabled = true;
+    apiKeyStatus.textContent = "checking key…";
+    try {
+        const res = await fetch("/api/provider/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: apiKeyInput.value.trim() }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            apiKeyStatus.textContent = err.detail || "connection failed";
+            return;
+        }
+        apiKeyInput.value = ""; // never keep the key around in the DOM
+        apiKeyDialog.close();
+        await refreshHealth();
+        await loadModels();
+    } catch (err) {
+        apiKeyStatus.textContent = "connection failed: " + err.message;
+    } finally {
+        apiKeyConnect.disabled = false;
+        apiKeyCancel.disabled = false;
+    }
+}
+
+apiKeyConnect.addEventListener("click", connectOpenRouter);
+apiKeyInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        connectOpenRouter();
+    }
+});
+
+orModelInput.addEventListener("change", async () => {
+    const typed = orModelInput.value.trim();
+    if (!typed) return;
+    // Datalist inputs accept free text: resolve to a real id (exact id match
+    // first, display-name match as a fallback) before posting.
+    const match =
+        orModels.find((m) => m.id === typed) ||
+        orModels.find((m) => m.name === typed);
+    if (!match) {
+        statusEl.textContent = "no such OpenRouter model — pick one from the list";
+        statusEl.className = "status warn";
+        return;
+    }
+    orModelInput.disabled = true;
+    try {
+        const res = await fetch("/api/model", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: match.id }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            addBubble("error").textContent =
+                "Failed to select model: " + (err.detail || res.statusText);
+        }
+    } catch (err) {
+        addBubble("error").textContent = "Failed to select model: " + err.message;
+    }
+    orModelInput.disabled = false;
+    await refreshHealth();
 });
 
 // --- Transcript rendering helpers ---------------------------------------
@@ -686,6 +866,14 @@ init();
 // page refresh. Skipped while a model switch or server start is in flight —
 // their progress text owns the status line (the disabled control is the flag).
 setInterval(() => {
-    if (modelSelect.disabled || startServerBtn.disabled || loadModelBtn.disabled) return;
+    if (
+        modelSelect.disabled ||
+        startServerBtn.disabled ||
+        stopServerBtn.disabled ||
+        loadModelBtn.disabled ||
+        apiKeyBtn.disabled ||
+        orModelInput.disabled
+    )
+        return;
     refreshHealth();
 }, 10000);

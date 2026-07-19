@@ -15,6 +15,11 @@ class ModelRequest(BaseModel):
     model: str
 
 
+class ProviderConnectRequest(BaseModel):
+    # Empty = reuse the key already saved (runtime or .env).
+    api_key: str = ""
+
+
 class ScoreSubmit(BaseModel):
     """Breakout high-score submission (POST /api/scores). Bounds keep a buggy
     client from writing garbage; abuse doesn't matter on a localhost app."""

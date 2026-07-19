@@ -71,6 +71,34 @@ def start_server() -> dict[str, Any]:
     return {"ok": True}
 
 
+def stop_server() -> dict[str, Any]:
+    """Stop LM Studio's local API server via `lms server stop`. Blocking — call
+    via a thread from async code. Returns {"ok": bool, "error"?: str}. A
+    "wasn't running" CLI failure still returns ok — the caller verifies real
+    unreachability, mirroring how start trusts reachability."""
+    lms = _lms_path()
+    try:
+        proc = subprocess.run(
+            [lms, "server", "stop"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except FileNotFoundError:
+        return {"ok": False, "error": "the 'lms' CLI was not found (is LM Studio installed?)"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "`lms server stop` timed out"}
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "server stop failed").strip()
+        if "not running" in detail.lower():
+            return {"ok": True}
+        return {"ok": False, "error": detail[:500]}
+    return {"ok": True}
+
+
 def unload_all() -> dict[str, Any]:
     """Unload every loaded model via `lms unload --all`. Blocking — call via a
     thread from async code. Returns {"ok": bool, "error"?: str}."""

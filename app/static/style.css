@@ -523,6 +523,46 @@ header::before {
 .confirm-buttons button.deny { border-color: var(--danger); background: rgba(133, 27, 50, 0.62); }
 .confirm-status { color: #d8ca9e; font-size: 0.74rem; }
 
+/* --- API key dialog (OpenRouter connect) --- */
+/* Reuses the .confirm-card look; a <dialog> centers itself via UA margin:auto,
+   so the card's align-self must not win. */
+.api-key-dialog {
+    align-self: auto;
+    width: min(92vw, 430px);
+    margin: auto;
+}
+
+.api-key-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+
+.api-key-hint {
+    margin: 0 0 0.6rem;
+    color: #d8ca9e;
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.api-key-hint code { font-family: var(--font-mono); font-size: 0.72rem; }
+
+#api-key-input {
+    width: 100%;
+    /* Visual masking without type=password (see index.html comment); Chromium
+       and Safari honor this, Firefox shows the key in clear — acceptable for a
+       localhost single-user app. */
+    -webkit-text-security: disc;
+    padding: 0.5rem 0.62rem;
+    border: 1px solid rgba(255, 209, 102, 0.35);
+    border-radius: 2px;
+    color: var(--fg);
+    background: rgba(13, 11, 4, 0.72);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+}
+
+#api-key-input:focus {
+    border-color: rgba(255, 209, 102, 0.7);
+    outline: none;
+}
+
 /* --- Composer --- */
 #chat-form {
     position: relative;
