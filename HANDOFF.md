@@ -112,6 +112,30 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
   Responsive overrides preserve the compact mobile layout. No HTML or JavaScript behavior changed; CSS brace
   checks and the standard unittest suite pass. Refresh the browser to evaluate or tune the aesthetic.
 
+- **RL Breakout Double-DQN + AI showcase are implemented and smoke-tested (new, uncommitted).**
+  `rl/` contains the deterministic level-1 Gymnasium physics port, torch-free shared 78-value
+  observation builder, hand-built replay buffer / target network / Double-DQN agent, and
+  train/play/export/plot scripts. Heavy dependencies are isolated in `rl/venv` (Python 3.14,
+  torch 2.13.0+cu126 sees CUDA); the app venv was unchanged. An exported 5,000-step smoke policy
+  lives in `rl/policy/` (eval score 48; not a trained master policy). `/ws/game-agent` uses pure
+  numpy inference from `app/rl_policy.py`; `/game` has an `AI: OFF/ON` button plus `A` shortcut,
+  30 Hz state streaming, auto-relaunch after life loss, safe level-2 no-op, and offline fallback.
+  Eight RL parity tests and 21 app tests pass (2 Windows link-permission skips); the CUDA smoke
+  run produced finite loss 0.0420, CSV/checkpoints, greedy playback, plot, and export. Live HTTP
+  `/game` returned 200 and the WebSocket returned an action for valid state plus action 0 for bad
+  state. Visual browser interaction remains unverified because no in-app browser was connected;
+  Nemanja still needs to run the long 0.5–3 M-step training and play-check the UI. Normal training
+  keeps the 10k random warmup; runs of 10k steps or fewer shorten warmup to make the specified 5k
+  end-to-end smoke test exercise learning and emit a finite loss.
+
+- **AI Spectator Arena is planned and briefed (not implemented).**
+  `briefs/rl-breakout-spectator-arena.md` is the implementation contract for Claude: `/game/arena`
+  with 1/2/4/6 independent spectator games, literal pop-outs, unattended level-1 looping, aggregate
+  viewer stats, atomic policy export, safe numpy hot reload, policy-status API, and opt-in
+  `rl.train --live-export`. It explicitly preserves ordinary `/game`, physics/rewards, the chat
+  shell, app dependencies, and the database. The currently running trainer can publish snapshots
+  only through manual `export_policy`; a future process can use the opt-in flag.
+
 - Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys. Possible follow-up worth a deliberate decision (not yet built): narrow the ALLOW tier so `cat`/`type`/`Get-Content` (which can read arbitrary file content, not just enumerate) require confirmation even for non-protected paths — currently accepted as-is since it matches the original spec and CONFIRM was always the fallback before this feature existed.
 
 ## Gotchas — expensive lessons, keep these

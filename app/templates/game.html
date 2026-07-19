@@ -12,6 +12,8 @@
             <span id="hud-score">SCORE 000000</span>
             <span id="hud-level">LVL 1</span>
             <span id="hud-lives">LIVES ●●●</span>
+            <span id="ai-badge" class="ai-badge" role="status" hidden>AI OFFLINE</span>
+            <button id="ai-btn" type="button" aria-pressed="false">AI: OFF</button>
             <button id="mute-btn" type="button" aria-pressed="false">SOUND: ON</button>
         </div>
 
@@ -20,7 +22,7 @@
             <div id="game-overlay">
                 <section id="panel-attract" class="game-panel" hidden>
                     <h1>BREAKOUT</h1>
-                    <p class="panel-hint">Press Enter or click to start · 1/2/3/4 starts at that level</p>
+                    <p class="panel-hint">Press Enter or click to start · A lets the AI play · 1/2/3/4 starts at that level</p>
                     <p class="panel-hint">Press 4 for Daja level!</p>
                     <h2 class="score-title">// HIGH SCORES</h2>
                     <ol id="score-rows" class="score-rows"></ol>

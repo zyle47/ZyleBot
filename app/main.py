@@ -4,7 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.requests import Request
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +19,7 @@ from app.models import (
     ScoreSubmit,
 )
 from app.sse import SSEEvent
+from app.rl_policy import PolicyUnavailableError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("zylebot.main")
@@ -332,6 +333,49 @@ async def submit_score(req: ScoreSubmit):
     entry = db.insert_score(req.initials, req.score, req.level)
     # Fresh top-10 in the response saves the frontend a second fetch.
     return {"entry": entry, "top": db.top_scores()}
+
+
+@app.websocket("/ws/game-agent")
+async def game_agent(websocket: WebSocket):
+    """Serve level-one Breakout actions from the exported numpy policy."""
+    await websocket.accept()
+    try:
+        from app import rl_policy
+
+        policy = rl_policy.get_policy()
+    except PolicyUnavailableError:
+        await websocket.send_json({"error": "no-policy"})
+        await websocket.close(code=1000)
+        return
+
+    try:
+        while True:
+            try:
+                payload = await websocket.receive_json()
+                bricks = payload.get("bricks")
+                if (
+                    not isinstance(bricks, str)
+                    or len(bricks) != 60
+                    or not bricks.isdigit()
+                ):
+                    raise ValueError("invalid level-one brick string")
+                state = {
+                    "paddle_x": float(payload["paddle_x"]),
+                    "balls": [
+                        [float(value) for value in ball]
+                        for ball in payload["balls"]
+                        if len(ball) == 4
+                    ],
+                    "speed": float(payload["speed"]),
+                    "pierce": float(payload["pierce"]),
+                    "bricks": [(int(hits), 1) for hits in bricks],
+                }
+                action = policy.act(state)
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError, OverflowError):
+                action = 0
+            await websocket.send_json({"action": action})
+    except WebSocketDisconnect:
+        return
 
 
 def _title_from_message(message: str) -> str:

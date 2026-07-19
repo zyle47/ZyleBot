@@ -165,6 +165,8 @@
         level: document.getElementById("hud-level"),
         lives: document.getElementById("hud-lives"),
         mute: document.getElementById("mute-btn"),
+        ai: document.getElementById("ai-btn"),
+        aiBadge: document.getElementById("ai-badge"),
     };
     const panels = {
         attract: document.getElementById("panel-attract"),
@@ -241,6 +243,12 @@
         pierceRemaining: 0,                      // gameplay seconds; bricks don't reflect ball
         input: { left: false, right: false },
     };
+    const ai = {
+        enabled: false,
+        socket: null,
+        awaitingReply: false,
+        frame: 0,
+    };
 
     function setState(next) {
         state = next;
@@ -259,6 +267,11 @@
             finalScoreEl.textContent = `SCORE ${String(game.score).padStart(6, "0")}`;
             initialsInput.value = defaultInitials;
             initialsInput.focus();
+        }
+        if (next === State.READY && ai.enabled) {
+            setTimeout(() => {
+                if (state === State.READY && ai.enabled) launch();
+            }, 0);
         }
     }
 
@@ -317,38 +330,41 @@
         game.paddle.x = Math.max(game.paddle.w / 2, Math.min(game.paddle.x, W - game.paddle.w / 2));
     }
 
+    function updateHud() {
+        hud.score.textContent = `SCORE ${String(game.score).padStart(6, "0")}`;
+        hud.level.textContent = `LVL ${game.level}`;
+        hud.lives.textContent = `LIVES ${"●".repeat(game.lives)}`;
+    }
+
+    function startGame(startLevel = 1) {
+        game.score = 0;
+        game.level = startLevel;
+        game.lives = START_LIVES;
+        // Same speed as arriving at this level naturally.
+        game.speed = Math.min(BALL_BASE_SPEED + (startLevel - 1) * SPEED_PER_LEVEL, MAX_SPEED);
+        game.pierceRemaining = 0;
+        game.paddle.x = W / 2;
+        game.input.left = false;
+        game.input.right = false;
+        buildBricks();
+        resetBall();
+        updateHud();
+        setState(State.READY);
+    }
+
+    function launch() {
+        const angle = (Math.random() - 0.5) * (Math.PI / 6);
+        game.balls = [{
+            x: game.paddle.x,
+            y: PADDLE_Y - BALL_R,
+            vx: Math.sin(angle) * game.speed,
+            vy: -Math.cos(angle) * game.speed,
+        }];
+        setState(State.PLAYING);
+    }
+
     // --- Input ---------------------------------------------------------------
     function bindInput() {
-        const updateHud = () => {
-            hud.score.textContent = `SCORE ${String(game.score).padStart(6, "0")}`;
-            hud.level.textContent = `LVL ${game.level}`;
-            hud.lives.textContent = `LIVES ${"●".repeat(game.lives)}`;
-        };
-        const startGame = (startLevel = 1) => {
-            game.score = 0;
-            game.level = startLevel;
-            game.lives = START_LIVES;
-            // Same speed as arriving at this level naturally.
-            game.speed = Math.min(BALL_BASE_SPEED + (startLevel - 1) * SPEED_PER_LEVEL, MAX_SPEED);
-            game.pierceRemaining = 0;
-            game.paddle.x = W / 2;
-            game.input.left = false;
-            game.input.right = false;
-            buildBricks();
-            resetBall();
-            updateHud();
-            setState(State.READY);
-        };
-        const launch = () => {
-            const angle = (Math.random() - 0.5) * (Math.PI / 6);
-            game.balls = [{
-                x: game.paddle.x,
-                y: PADDLE_Y - BALL_R,
-                vx: Math.sin(angle) * game.speed,
-                vy: -Math.cos(angle) * game.speed,
-            }];
-            setState(State.PLAYING);
-        };
         const spaceAction = () => {
             if (state === State.ATTRACT || state === State.GAME_OVER) {
                 startGame();
@@ -374,6 +390,8 @@
 
             if (e.code === "Space") {
                 spaceAction();
+            } else if (e.code === "KeyA" && state === State.ATTRACT) {
+                toggleAi();
             } else if (e.code === "Escape") {
                 if (state === State.PLAYING) setState(State.PAUSED);
                 else if (state === State.PAUSED) setState(State.PLAYING);
@@ -410,6 +428,88 @@
         document.addEventListener("visibilitychange", () => {
             if (document.hidden && state === State.PLAYING) setState(State.PAUSED);
         });
+    }
+
+    // --- AI policy bridge (30 Hz browser state -> numpy policy action) -------
+    function updateAiControl() {
+        hud.ai.textContent = ai.enabled ? "AI: ON" : "AI: OFF";
+        hud.ai.setAttribute("aria-pressed", String(ai.enabled));
+    }
+
+    function disableAi(offline = false) {
+        ai.enabled = false;
+        ai.awaitingReply = false;
+        game.input.left = false;
+        game.input.right = false;
+        const socket = ai.socket;
+        ai.socket = null;
+        if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000);
+        hud.aiBadge.hidden = !offline;
+        updateAiControl();
+    }
+
+    function enableAi() {
+        ai.enabled = true;
+        ai.awaitingReply = false;
+        ai.frame = 0;
+        hud.aiBadge.hidden = true;
+        updateAiControl();
+        const scheme = location.protocol === "https:" ? "wss" : "ws";
+        const socket = new WebSocket(`${scheme}://${location.host}/ws/game-agent`);
+        ai.socket = socket;
+        socket.addEventListener("open", () => {
+            if (ai.enabled && state === State.ATTRACT) startGame(1);
+        });
+        socket.addEventListener("message", (event) => {
+            if (!ai.enabled || socket !== ai.socket) return;
+            ai.awaitingReply = false;
+            let message;
+            try {
+                message = JSON.parse(event.data);
+            } catch {
+                disableAi(true);
+                return;
+            }
+            if (message.error) {
+                disableAi(true);
+                return;
+            }
+            const action = Number(message.action);
+            game.input.left = action === 1;
+            game.input.right = action === 2;
+        });
+        socket.addEventListener("error", () => disableAi(true));
+        socket.addEventListener("close", () => {
+            if (ai.enabled && socket === ai.socket) disableAi(true);
+        });
+    }
+
+    function toggleAi() {
+        if (ai.enabled) disableAi(false);
+        else enableAi();
+        hud.ai.blur();
+    }
+
+    function streamAiState() {
+        if (!ai.enabled || state !== State.PLAYING || ai.awaitingReply) return;
+        if (!ai.socket || ai.socket.readyState !== WebSocket.OPEN) return;
+        ai.frame++;
+        if (ai.frame % 2 !== 0) return;
+        ai.awaitingReply = true;
+        ai.socket.send(JSON.stringify({
+            paddle_x: game.paddle.x,
+            balls: game.balls
+                .filter((ball) => !ball.dead)
+                .map((ball) => [ball.x, ball.y, ball.vx, ball.vy]),
+            bricks: game.bricks.map((brick) => brick.alive ? brick.hits : 0).join(""),
+            speed: game.speed,
+            pierce: game.pierceRemaining,
+        }));
+    }
+
+    function bindAi() {
+        updateAiControl();
+        hud.ai.addEventListener("click", toggleAi);
     }
 
     // --- Physics (runs at PHYSICS_STEP; called from the rAF loop) ------------
@@ -614,6 +714,7 @@
                 }
                 accumulator = 0;
             }
+            streamAiState();
             render();
             requestAnimationFrame(frame);
         };
@@ -917,6 +1018,7 @@
         window.addEventListener("resize", resizeCanvas);
         bindInput();
         bindMute();
+        bindAi();
         bindScoreForm();
         startLoop();
         setState(State.ATTRACT);

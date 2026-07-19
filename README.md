@@ -269,6 +269,32 @@ models.json             Model aliases and preferred context lengths
 .env.example            Documented configuration template
 ```
 
+## Teaching a DQN to play Breakout
+
+The `rl/` subproject is a from-scratch PyTorch Double-DQN for the level-one Breakout wall. Its
+Gymnasium environment mirrors the browser game's fixed-step physics, while the live **AI: ON**
+button uses an exported policy through a lightweight numpy-only WebSocket path in the app.
+PyTorch and the training stack belong in a separate environment; they are not app dependencies:
+
+```powershell
+py -3.14 -m venv rl\venv
+rl\venv\Scripts\python.exe -m pip install -r rl\requirements.txt --index-url https://download.pytorch.org/whl/cu126 --extra-index-url https://pypi.org/simple
+rl\venv\Scripts\python.exe -m rl.train
+rl\venv\Scripts\python.exe -m rl.play --ckpt rl\runs\<run>\best.pt
+rl\venv\Scripts\python.exe -m rl.export_policy --ckpt rl\runs\<run>\best.pt
+rl\venv\Scripts\python.exe -m rl.plot --run rl\runs\<run>
+```
+
+Open `/game`, leave the game on its attract screen, then click **AI: OFF** (or press `A`) to
+watch the exported `rl/policy/breakout_policy.npz` play. A random policy usually scores about
+0–100; paddle tracking tends to emerge around 100k–300k training steps, and reliable level-one
+clears commonly take roughly 0.5–3 million steps. Expect hours rather than days: the small
+network is cheap, while CPU-side environment stepping is the main bottleneck.
+
+Training defaults to two million steps, uses CUDA automatically when available, logs CSV data
+and checkpoints under ignored `rl/runs/`, and supports `--resume <checkpoint>`. Run the RL tests
+with `rl\venv\Scripts\python.exe -m unittest discover -s rl/tests -v`.
+
 ## Limitations
 
 - **Vision and tools are separate.** The current LM Studio stack drops image input when
