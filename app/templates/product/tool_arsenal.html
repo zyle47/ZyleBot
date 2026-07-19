@@ -109,6 +109,20 @@
         </article>
     </section>
 
+    <section class="page-section">
+        <p class="section-label">SCOPED_WRITE // STYLE LAB</p>
+        <h2>Automatic change inside a boundary too small to hurt the app.</h2>
+        <div class="action-list">
+            <div><code>update_style_lab_css</code><span>Replace the fixed preview stylesheet rendered only inside the isolated <a href="/style-lab" target="_blank" rel="noopener noreferrer">Style Lab</a> iframe.</span></div>
+            <div><code>reset_style_lab_css</code><span>Restore that preview from a protected starter stylesheet.</span></div>
+        </div>
+        <p>
+            Neither tool accepts a path. The writer validates size and basic structure, rejects external
+            resources and linked targets, and atomically replaces only <code>app/static/style-lab.css</code>.
+            The chat interface and approval controls never load that stylesheet.
+        </p>
+    </section>
+
     <section class="page-section page-section--accent">
         <p class="section-label">CONFIRM_REQUIRED // ACTIONS</p>
         <h2>When a tool can leave a footprint, you get the final word.</h2>

@@ -542,6 +542,70 @@ body.page { overflow-y: auto; }
     font-size: 0.86em;
 }
 
+/* --- Style Lab outer shell (editable CSS stays inside its iframe) -------- */
+.style-lab-hero code {
+    color: var(--green-bright);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+.style-lab-console {
+    margin-bottom: 1.1rem;
+    overflow: hidden;
+    border: 1px solid rgba(103, 255, 183, 0.24);
+    border-radius: var(--radius-lg);
+    background: rgba(2, 8, 6, 0.76);
+    box-shadow: var(--glass-shadow-soft);
+}
+
+.style-lab-toolbar,
+.style-lab-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 1rem;
+}
+
+.style-lab-toolbar {
+    border-bottom: 1px solid rgba(103, 255, 183, 0.15);
+    background: rgba(103, 255, 183, 0.035);
+}
+
+.style-lab-toolbar .section-label { margin: 0 0 0.25rem !important; }
+.style-lab-toolbar h2 { margin: 0; color: var(--fg); font: 650 0.9rem var(--font-mono); }
+
+.style-lab-live-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+    color: var(--green-bright);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+}
+
+.style-lab-frame {
+    display: block;
+    width: 100%;
+    min-height: 620px;
+    border: 0;
+    background: #030806;
+}
+
+.style-lab-meta {
+    flex-wrap: wrap;
+    border-top: 1px solid rgba(103, 255, 183, 0.12);
+    color: #849b92;
+    font-family: var(--font-mono);
+    font-size: 0.56rem;
+    letter-spacing: 0.04em;
+}
+
+.style-lab-meta b { color: rgba(103, 255, 183, 0.72); font-weight: 700; }
+
 /* --- README / resource guide --- */
 .page-section[id],
 .page-intro[id] { scroll-margin-top: 1.25rem; }
@@ -746,6 +810,7 @@ body.page { overflow-y: auto; }
     .gauge-demo b { margin-bottom: 0.4rem; }
     .readme-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .command-grid { grid-template-columns: 1fr; }
+    .style-lab-frame { min-height: 560px; }
 }
 
 @media (max-width: 460px) {

@@ -6,6 +6,10 @@ from typing import Any
 
 class RiskTier(str, Enum):
     SAFE = "safe"
+    # A write tool whose mutation boundary is enforced inside the tool itself.
+    # These calls run without a confirmation card, but must never accept an
+    # unrestricted destination path.
+    SCOPED_WRITE = "scoped_write"
     CONFIRM_REQUIRED = "confirm_required"
 
 

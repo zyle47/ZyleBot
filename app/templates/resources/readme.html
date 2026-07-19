@@ -177,6 +177,20 @@ lms load &lt;model-id&gt;</code></pre>
         </div>
     </section>
 
+    <section class="page-section">
+        <p class="section-label">TOOL ARSENAL // SCOPED WRITE</p>
+        <h2>Style experiments run automatically inside an isolated preview.</h2>
+        <div class="action-list">
+            <div><code>update_style_lab_css</code><span>Replace only <code>app/static/style-lab.css</code>; no path argument is accepted.</span></div>
+            <div><code>reset_style_lab_css</code><span>Restore the protected starter design.</span></div>
+        </div>
+        <p>
+            Open the <a href="/style-lab" target="_blank" rel="noopener noreferrer">Style Lab</a>
+            beside the chat. It detects stylesheet changes within about one second and renders them only
+            inside an iframe, where they cannot restyle ZyleBot's interface.
+        </p>
+    </section>
+
     <section class="page-section page-section--warning">
         <p class="section-label">TOOL ARSENAL // CONTROLLED ACTIONS</p>
         <h2>Changes require authority. Shell commands require classification.</h2>

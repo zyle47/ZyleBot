@@ -47,6 +47,11 @@ async def resources_readme(request: Request):
     return templates.TemplateResponse(request, "resources/readme.html")
 
 
+@router.get("/style-lab")
+async def style_lab(request: Request):
+    return templates.TemplateResponse(request, "style_lab.html")
+
+
 # --- About pages ------------------------------------------------------------
 
 @router.get("/about/how-it-works")

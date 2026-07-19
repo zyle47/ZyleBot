@@ -130,7 +130,18 @@ These run automatically so the agent can gather evidence without interrupting th
 | `get_weather` | Resolve a place and return current Open-Meteo conditions. |
 | `get_game_scores` | Read the Breakout high-score table (play at `/game`). |
 
-### File actions
+### Scoped automatic Style Lab
+
+These two tools modify one isolated preview stylesheet without showing an approval card.
+Neither accepts a destination path, and the CSS is rendered only inside the `/style-lab`
+iframe. The lab is linked from the footer and refreshes changes automatically.
+
+| Tool | Purpose |
+|---|---|
+| `update_style_lab_css` | Replace the complete `app/static/style-lab.css` preview stylesheet. |
+| `reset_style_lab_css` | Restore the preview from the protected starter stylesheet. |
+
+### General file actions
 
 These always pause the agent loop and show their exact arguments in an **Approve / Deny**
 card before anything changes.
@@ -160,6 +171,12 @@ approve a command you would run yourself.
 folder and its descendants. Relative paths are resolved from that project folder, and
 path traversal or filesystem links cannot be used to list directories outside it.
 
+The Style Lab writer has a separate fixed boundary: it cannot choose a path, create a
+file, or touch the application's own styles. It rejects oversized or incomplete CSS,
+external-resource syntax, HTML style tags, null bytes, and linked targets; writes replace
+the file atomically. Open `/style-lab` beside the chat to watch changes appear within
+about one second.
+
 ## How it works
 
 1. **You send a message.** The browser posts it to the local FastAPI app.
@@ -167,8 +184,8 @@ path traversal or filesystem links cannot be used to list directories outside it
    to the active LM Studio model; LM Studio itself remains stateless.
 3. **The model answers or requests a tool.** Tool requests use validated names and
    structured arguments from ZyleBot's registry.
-4. **ZyleBot enforces the boundary.** Read-only work can continue, consequential actions
-   pause for approval, and blocked shell commands are refused.
+4. **ZyleBot enforces the boundary.** Read-only work and tightly scoped Style Lab edits
+   can continue; general actions pause for approval, and blocked shell commands are refused.
 5. **The result returns to the model.** It can use the evidence, call another tool,
    change direction, or finish.
 6. **The browser receives a live stream.** Reasoning, tool events, approval cards, and

@@ -1,0 +1,69 @@
+{% extends "page.html" %}
+
+{% block title %}Style Lab — ZyleBot{% endblock %}
+
+{% block page_content %}
+    <section class="page-hero style-lab-hero">
+        <p class="page-kicker">SANDBOX // CSS // LIVE</p>
+        <h1>Style Lab</h1>
+        <p class="page-hero-line">A safe canvas where ZyleBot can experiment without styling itself.</p>
+        <p class="page-lede">
+            Keep this page open beside the chat. Changes to <code>style-lab.css</code> are detected
+            automatically and rendered only inside the isolated preview below.
+        </p>
+        <div class="page-signal-row" aria-label="Style Lab safeguards">
+            <span>Fixed file target</span>
+            <span>Isolated preview</span>
+            <span>Live polling</span>
+            <span>Protected reset</span>
+        </div>
+    </section>
+
+    <section class="style-lab-console" aria-labelledby="style-lab-preview-title">
+        <div class="style-lab-toolbar">
+            <div>
+                <p class="section-label">PREVIEW CHANNEL</p>
+                <h2 id="style-lab-preview-title">Editable component canvas</h2>
+            </div>
+            <div class="style-lab-live-state" role="status" aria-live="polite">
+                <i class="signal-dot"></i>
+                <span id="style-lab-status">CONNECTING</span>
+            </div>
+        </div>
+        <iframe
+            id="style-lab-frame"
+            class="style-lab-frame"
+            title="Live Style Lab CSS preview"
+            sandbox="allow-same-origin"
+        ></iframe>
+        <div class="style-lab-meta">
+            <span><b>FILE</b> app/static/style-lab.css</span>
+            <span><b>REFRESH</b> ~1 second</span>
+            <span id="style-lab-updated"><b>UPDATED</b> waiting for stylesheet</span>
+        </div>
+    </section>
+
+    <section class="page-grid page-grid--two">
+        <article class="page-section">
+            <p class="section-label">TRY IT</p>
+            <h2>Prompt from the chat.</h2>
+            <p>
+                Ask ZyleBot to restyle the Style Lab—for example, “Make the Style Lab feel like a
+                retro-futurist spaceship dashboard.” The scoped tool writes the complete stylesheet
+                and this page updates automatically.
+            </p>
+        </article>
+        <article class="page-section page-section--warning">
+            <p class="section-label">RECOVERY</p>
+            <h2>The lab can always be reset.</h2>
+            <p>
+                Ask ZyleBot to reset the Style Lab. The protected starter stylesheet is separate from
+                the editable file, and neither the chat nor its approval controls load lab CSS.
+            </p>
+        </article>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/style-lab.js"></script>
+{% endblock %}

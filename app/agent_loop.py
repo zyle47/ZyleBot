@@ -31,6 +31,9 @@ _BASE_SYSTEM_PROMPT = (
     "again with the next_offset it gives you — do NOT re-fetch the same offset or keep "
     "trying different URLs for content you already have.\n"
     "- Never repeat a tool call that already returned an error or empty result.\n"
+    "- update_style_lab_css and reset_style_lab_css may change only the isolated "
+    "Style Lab preview stylesheet. Use them only when the user explicitly asks you "
+    "to redesign or reset that preview; they do not require confirmation.\n"
     "- Stop calling tools as soon as you can answer; then give a clear, concise reply "
     "citing any source URLs. Never invent facts or URLs.\n"
     "If you have gathered partial information and cannot get more, answer with what you "
@@ -217,7 +220,9 @@ async def _react_loop(
     tools = (
         None
         if vision_mode
-        else get_openai_tool_schemas({RiskTier.SAFE, RiskTier.CONFIRM_REQUIRED})
+        else get_openai_tool_schemas(
+            {RiskTier.SAFE, RiskTier.SCOPED_WRITE, RiskTier.CONFIRM_REQUIRED}
+        )
     )
     loop = asyncio.get_running_loop()
 
