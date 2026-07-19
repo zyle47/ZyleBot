@@ -141,6 +141,10 @@ iframe. The lab is linked from the footer and refreshes changes automatically.
 | `update_style_lab_css` | Replace the complete `app/static/style-lab.css` preview stylesheet. |
 | `reset_style_lab_css` | Restore the preview from the protected starter stylesheet. |
 
+If a model selects generic `write_file` for that exact stylesheet, ZyleBot automatically
+routes the call through the same scoped validator and skips the confirmation card. Every
+other `write_file` destination remains approval-required.
+
 ### General file actions
 
 These always pause the agent loop and show their exact arguments in an **Approve / Deny**

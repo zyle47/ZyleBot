@@ -4,8 +4,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.tools import get_openai_tool_schemas, get_tool_risk_tier
-from app.tools import style_lab_tools
+from app.tools import action_tools, style_lab_tools
 from app.tools.base import RiskTier
+from app.agent_loop import _needs_confirmation
 
 
 class StyleLabToolTests(unittest.TestCase):
@@ -99,6 +100,31 @@ class StyleLabToolTests(unittest.TestCase):
         by_name = {schema["function"]["name"]: schema["function"] for schema in schemas}
         self.assertEqual(set(by_name), {"update_style_lab_css", "reset_style_lab_css"})
         self.assertNotIn("path", by_name["update_style_lab_css"]["parameters"]["properties"])
+
+    def test_generic_writer_routes_exact_lab_target_without_confirmation(self) -> None:
+        content = ".lab-stage { background: #000; }\n"
+        call = {
+            "name": "write_file",
+            "arguments": {"path": str(self.target), "content": content},
+        }
+
+        self.assertFalse(_needs_confirmation(call))
+        result = action_tools.write_file(**call["arguments"])
+
+        self.assertNotIn("error", result)
+        self.assertEqual(result["scope"], "isolated /style-lab preview only")
+        self.assertEqual(self.target.read_text(encoding="utf-8"), content)
+
+    def test_generic_writer_still_requires_confirmation_for_every_other_file(self) -> None:
+        call = {
+            "name": "write_file",
+            "arguments": {
+                "path": str(self.static_dir / "anything-else.css"),
+                "content": ".x { color: red; }",
+            },
+        }
+
+        self.assertTrue(_needs_confirmation(call))
 
 
 if __name__ == "__main__":

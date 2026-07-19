@@ -7,6 +7,7 @@ from app.command_guard import Verdict, check_command
 from app.config import settings
 from app.platform_info import SHELL_NAME, shell_argv
 from app.tools.base import RiskTier, tool
+from app.tools.style_lab_tools import is_style_lab_css_path, update_style_lab_css
 
 logger = logging.getLogger("zylebot.action_tools")
 
@@ -19,7 +20,9 @@ def _resolve(path: str) -> Path:
     name="write_file",
     description=(
         "Create a new text file or overwrite an existing one with the given content. "
-        "Creates parent folders if needed. This modifies the filesystem."
+        "Creates parent folders if needed. This modifies the filesystem and normally "
+        "requires confirmation. For the Style Lab, prefer update_style_lab_css; an exact "
+        "style-lab.css target is safely routed through that scoped tool."
     ),
     parameters_schema={
         "type": "object",
@@ -32,6 +35,11 @@ def _resolve(path: str) -> Path:
     risk_tier=RiskTier.CONFIRM_REQUIRED,
 )
 def write_file(path: str, content: str) -> dict[str, Any]:
+    # Local models sometimes choose the familiar generic writer even when the
+    # dedicated scoped tool is available. Preserve the safe UX without trusting
+    # that choice: the exact lab target gets the scoped validator and atomic writer.
+    if is_style_lab_css_path(path):
+        return update_style_lab_css(content)
     target = _resolve(path)
     if target.is_dir():
         return {"error": "path is a directory", "path": str(target)}

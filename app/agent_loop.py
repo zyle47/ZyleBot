@@ -11,6 +11,7 @@ from app.config import settings
 from app.platform_info import OS_NAME, SHELL_NAME
 from app.sse import SSEEvent
 from app.tools import RiskTier, execute_tool, get_openai_tool_schemas, get_tool_risk_tier
+from app.tools.style_lab_tools import is_style_lab_css_path
 
 logger = logging.getLogger("zylebot.agent_loop")
 
@@ -107,6 +108,12 @@ def _needs_confirmation(tc: dict[str, Any]) -> bool:
     if tc["name"] == "run_command":
         command = (tc.get("arguments") or {}).get("command", "")
         if check_command(command).verdict is Verdict.ALLOW:
+            return False
+    if tc["name"] == "write_file":
+        path = (tc.get("arguments") or {}).get("path", "")
+        if is_style_lab_css_path(path):
+            # write_file itself delegates this exact destination to the scoped
+            # CSS validator; no generic filesystem write happens on this path.
             return False
     return True
 

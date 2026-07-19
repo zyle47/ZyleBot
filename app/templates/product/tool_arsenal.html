@@ -119,7 +119,9 @@
         <p>
             Neither tool accepts a path. The writer validates size and basic structure, rejects external
             resources and linked targets, and atomically replaces only <code>app/static/style-lab.css</code>.
-            The chat interface and approval controls never load that stylesheet.
+            The chat interface and approval controls never load that stylesheet. If a model chooses
+            generic <code>write_file</code> for that exact target, the backend still routes it through this
+            scoped validator without confirmation; every other destination keeps the approval gate.
         </p>
     </section>
 

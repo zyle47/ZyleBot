@@ -22,6 +22,14 @@ _FORBIDDEN_CSS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def is_style_lab_css_path(path: str) -> bool:
+    """Return true only when a caller resolves to the fixed editable lab file."""
+    try:
+        return Path(path).expanduser().resolve() == _STYLE_LAB_CSS
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
 def _target_is_safe(target: Path) -> bool:
     """Fail closed if the fixed lab file or its directory became a link."""
     try:
