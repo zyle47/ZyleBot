@@ -128,6 +128,7 @@ These run automatically so the agent can gather evidence without interrupting th
 | `web_search` | Search the web through DuckDuckGo by default. |
 | `fetch_url` | Download and extract readable page text in offset-based chunks. |
 | `get_weather` | Resolve a place and return current Open-Meteo conditions. |
+| `get_game_scores` | Read the Breakout high-score table (play at `/game`). |
 
 ### File actions
 

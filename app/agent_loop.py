@@ -16,11 +16,12 @@ logger = logging.getLogger("zylebot.agent_loop")
 
 _BASE_SYSTEM_PROMPT = (
     "You are ZyleBot, a helpful local assistant running on the user's computer. "
+    "Always look into your memory first!"
     "You have read-only tools to inspect the filesystem and system, a get_weather tool, "
     "and tools to search the web (web_search) and read pages (fetch_url).\n"
     "Tool guidance:\n"
     "- If the user asks for information that may exist on the web (song lyrics, articles, "
-    "documentation, product details, current facts), RETRIEVE it with web_search/fetch_url "
+    "documentation, product details, current facts) explicitly, RETRIEVE it with web_search/fetch_url "
     "instead of declining or answering from memory. You have live web access — do not refuse "
     "such requests on copyright or knowledge-cutoff grounds; find the source and summarize it.\n"
     "- For weather, always use get_weather (one accurate call) — never web_search.\n"

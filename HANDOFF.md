@@ -2,7 +2,7 @@
 
 > Living *current-state* doc — what exists, what's in flight, and the gotchas that save debugging
 > time. **The main (orchestrator) model updates this file every time work lands** — subagents
-> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-11**.
+> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-19**.
 >
 > Companions: `CLAUDE.md` (shared project rules + Claude agent routing), `README.md` (user-facing setup/tools),
 > `.codex/config.toml` + `.codex/agents/` (project-scoped Codex configuration and specialist roles).
@@ -31,13 +31,51 @@ flow (survives page reload) · SQLite per-conversation memory, auto-titles, cont
 LM Studio health polling + in-app ▶ start-server and ▲ load / ⏏ unload model buttons · voice input (faster-whisper on CPU, so it
 never competes for VRAM) · image input (client-side downscale, persisted per message) · dark neon UI
 with website-style footer (Product pages plus a styled `/resources/readme` guide) · cross-platform shell (PowerShell/bash) ·
-three-tier command guard in front of `run_command` (BLOCK/CONFIRM/ALLOW — see `app/command_guard.py`).
+three-tier command guard in front of `run_command` (BLOCK/CONFIRM/ALLOW — see `app/command_guard.py`) ·
+**Breakout minigame** at `/game` (canvas, WebAudio SFX, SQLite `scores` table via `GET/POST /api/scores`,
+SAFE `get_game_scores` tool — chat shell untouched: own `game.html`/`game.css`/`game.js`, `app.js` never loads there) ·
+four progressive Breakout layouts: classic 10×6 wall, durability mosaic, a 20×12 ZYLE wordmark, then a
+full 48×24 micro-brick DAJA-CHAN tribute with a red heart and large tortoiseshell-cat face;
+amber Hard bricks need 2 hits, danger-pink Ultima bricks need 3, and shiny silver Piercer bricks need 5
+(remaining-hit pips are drawn in-canvas). Destroying a Piercer grants 10 active-play seconds where the
+silver-ringed ball instantly destroys contacted bricks and passes through them without reflecting.
+Level 2 also hides a pink 4-hit **Splitter** (randomly placed each build, three-dot telegraph): breaking it
+forks the ball into three; a life is lost only when the LAST live ball drains, then play resumes single-ball.
 
 Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Belgrade" triggers tools — or dispatch the `verifier` agent.
 
-## Status (2026-07-11)
+## Status (2026-07-19)
 
-- Everything above is committed (through `aabd63f`). Uncommitted: current-state docs, aligned Claude/Codex specialist definitions, and project-scoped Codex configuration; the redundant root `AGENTS.md` was removed in favor of the `CLAUDE.md` fallback.
+- Everything above through the command guard is committed (through `aabd63f`). Uncommitted: current-state docs, aligned Claude/Codex specialist definitions, project-scoped Codex configuration, and the whole Breakout feature (new: `game.html`/`game.css`/`game.js`/`tools/game_tools.py`; edits: `pages.py`, `db.py`, `models.py`, `main.py`, `tools/__init__.py`, `_footer.html`, README).
+
+- **Breakout is done and verified.** Level 1 remains the classic 60-brick wall. Level 2 is a sparse 16×9
+  mosaic (24 regular / 29 Hard / 8 Ultima / 1 Piercer); level 3 uses a 20×12 ZYLE mask
+  (27 Hard / 30 Ultima / a Piercer in Y's open gap and a Splitter in E's — mask digit 4 = Splitter,
+  5 = Piercer, in any level mask). Level 4+ is a completely filled 48×24
+  DAJA-CHAN tribute (1,152 one-hit micro-bricks): neon-yellow background, neon-red title and far-left heart,
+  and Daja's portrait. The portrait was redrawn by Claude from her photo after the first version rendered
+  ~2:1 stretched, then refined per Nemanja's marked-up screenshot: now a 30×19 string-art block (`catArt`,
+  anchored row 5/col 9 — the level-4 cell pitch is ~15.9×15 px so art proportions render true) with square
+  face, pointed brown-fringed ears, round green eyes/dark pupils, tan forehead blaze, brindled cheeks,
+  cream-framed dark nose, a black mouth line running nose→lip→chin shadow→bib, white lip/chin/bib cascade,
+  and full-length two-row whiskers per side (lower pair further out; they reach grid cols 9–13 / 34–38,
+  clear of the heart which ends at row 14). Preview: `scratchpad daja_v2.py` replicates the generator to PNG.
+  Each hit scores, only the final hit decrements `bricksAlive` and raises speed, and clearing level 2 builds
+  the ZYLE layout at level speed 420. Piercers take 5 ordinary hits; breaking one grants 10 seconds of
+  gameplay-time piercing, which instantly finishes any contacted brick without bouncing and preserves the
+  ball's direction while its silver ring is visible. Deterministic JS harnesses verified pattern dimensions,
+  2/3/5-hit durability, Piercer placement/countdown/no-bounce collision flow, scoring, rendering, and the
+  level-3→4 transition at speed 460. A live browser check verified the revised level-4 face, full yellow wall,
+  and ATTRACT-screen `4` shortcut; `/game` + `game.js` serve 200. `game.js` is 869 lines. Existing safeguards remain: GAME_OVER
+  exits only by submit/skip/keyboard; arrows work while the ball is glued; ATTRACT shows a fresh dimmed wall;
+  score POST validation/order and SAFE score tool work. Dev shortcut: pressing 1/2/3/4 on ATTRACT starts at
+  that level's natural arrival speed (`startGame(startLevel)`; digit keys are ATTRACT-only).
+  Multiball (Claude): the ball is now `game.balls` (array) throughout physics/render; drained balls are
+  marked dead and filtered post-step, the life resolves only when the array empties, and level-clear
+  early-returns because `resetBall()` replaces the array. The Splitter is assigned in `buildBricks` (digit
+  masks unchanged — one random non-Piercer mosaic brick becomes 4-hit `splitter: true`), splits fan
+  ±0.55 rad around the breaking ball's heading at `game.speed`, and pierce applies globally to all balls.
+  `game.js` is 925 lines. Not yet play-verified by Nemanja.
 
 - Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys. Possible follow-up worth a deliberate decision (not yet built): narrow the ALLOW tier so `cat`/`type`/`Get-Content` (which can read arbitrary file content, not just enumerate) require confirmation even for non-protected paths — currently accepted as-is since it matches the original spec and CONFIRM was always the fallback before this feature existed.
 

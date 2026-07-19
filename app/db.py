@@ -27,6 +27,17 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, id);
+
+CREATE TABLE IF NOT EXISTS scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    game TEXT NOT NULL DEFAULT 'breakout',
+    initials TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    level INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_scores_game_score ON scores(game, score DESC);
 """
 
 
@@ -57,6 +68,33 @@ def init_db() -> None:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}
         if "images_json" not in cols:
             conn.execute("ALTER TABLE messages ADD COLUMN images_json TEXT")
+
+
+# --- Scores ---------------------------------------------------------------
+
+def insert_score(initials: str, score: int, level: int, game: str = "breakout") -> dict[str, Any]:
+    """Insert one high-score row and return it as a dict."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO scores (game, initials, score, level, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (game, initials, score, level, _now()),
+        )
+        row = conn.execute(
+            "SELECT * FROM scores WHERE id = ?", (cur.lastrowid,)
+        ).fetchone()
+    return dict(row)
+
+
+def top_scores(game: str = "breakout", limit: int = 10) -> list[dict[str, Any]]:
+    """Top-N scores for a game, best first; earlier submission wins ties."""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT initials, score, level, created_at FROM scores "
+            "WHERE game = ? ORDER BY score DESC, id ASC LIMIT ?",
+            (game, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # --- Conversations -------------------------------------------------------

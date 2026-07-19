@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import agent_loop, db, llm_client, model_manager, pages, stt
 from app.config import settings
-from app.models import ChatRequest, ConfirmRequest, ModelRequest
+from app.models import ChatRequest, ConfirmRequest, ModelRequest, ScoreSubmit
 from app.sse import SSEEvent
 
 logging.basicConfig(level=logging.INFO)
@@ -192,6 +192,20 @@ async def conversation_messages(conversation_id: int):
 async def remove_conversation(conversation_id: int):
     db.delete_conversation(conversation_id)
     return {"ok": True}
+
+
+# --- Game scores ----------------------------------------------------------
+
+@app.get("/api/scores")
+async def get_scores(limit: int = 10):
+    return {"scores": db.top_scores(limit=max(1, min(limit, 50)))}
+
+
+@app.post("/api/scores")
+async def submit_score(req: ScoreSubmit):
+    entry = db.insert_score(req.initials, req.score, req.level)
+    # Fresh top-10 in the response saves the frontend a second fetch.
+    return {"entry": entry, "top": db.top_scores()}
 
 
 def _title_from_message(message: str) -> str:

@@ -1,0 +1,164 @@
+/* Breakout page styles — loaded only by game.html, on top of pages.css.
+   Reuses the :root theme vars from style.css (loaded via base.html); no new colors. */
+
+#game-root {
+    max-width: 840px;
+    margin: 0 auto;
+    padding: 16px 20px 40px;
+    font-family: var(--font-mono);
+}
+
+/* --- HUD (DOM, above the canvas — crisp text, no per-frame canvas layout) --- */
+
+.game-hud {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 8px 4px;
+    color: var(--green);
+    letter-spacing: 0.08em;
+}
+
+.game-hud #hud-lives { color: var(--pink); }
+
+#mute-btn {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font: inherit;
+    padding: 4px 10px;
+    cursor: pointer;
+}
+#mute-btn:hover { color: var(--green-bright); border-color: var(--border-hot); }
+#mute-btn:active { transform: translateY(1px); }
+#mute-btn[aria-pressed="true"] { color: var(--danger); opacity: 0.7; }
+
+/* --- Stage ----------------------------------------------------------------- */
+
+.game-stage {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    max-width: 800px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-green);
+    background: var(--bg-deep);
+}
+
+#game-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* --- Overlay panels (attract / paused / level clear / game over) ----------- */
+
+#game-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;   /* panels re-enable their own pointer events */
+}
+
+.game-panel {
+    pointer-events: auto;
+    text-align: center;
+    padding: 28px 40px;
+    background: var(--panel);
+    border: 1px solid var(--border-hot);
+    color: var(--fg);
+}
+.game-panel[hidden] { display: none; }
+.game-panel h1, .game-panel h2 { color: var(--green); letter-spacing: 0.2em; margin: 0 0 10px; }
+.panel-hint { color: var(--muted); }
+.game-panel {
+    box-shadow: var(--shadow-green);
+    animation: game-panel-enter 180ms ease-out;
+}
+#panel-gameover { box-shadow: var(--shadow-pink); }
+.game-panel h1 { text-shadow: var(--shadow-green); }
+
+@keyframes game-panel-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .game-panel { animation: none; }
+}
+
+/* --- High-score table (attract panel) -------------------------------------- */
+
+.score-title { font-size: 0.85rem; color: var(--pink); letter-spacing: 0.15em; }
+
+.score-rows {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    min-width: 300px;
+    text-align: left;
+}
+.score-rows li {
+    display: grid;
+    grid-template-columns: 3ch 1fr 7ch 6ch;
+    gap: 12px;
+    padding: 2px 0;
+}
+.score-rank { color: var(--muted); }
+.score-initials { color: var(--fg); }
+.score-value { color: var(--green); text-align: right; }
+.score-level { color: var(--amber); text-align: right; }
+.score-rows li:first-child .score-rank,
+.score-rows li:first-child .score-value {
+    color: var(--green-bright);
+    text-shadow: var(--shadow-green);
+}
+.score-rows .score-empty {
+    display: block;
+    color: var(--muted);
+    text-align: center;
+}
+
+/* --- Game-over form --------------------------------------------------------- */
+
+#score-form { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 14px; }
+
+#initials-input {
+    width: 5ch;
+    text-transform: uppercase;
+    text-align: center;
+    font: inherit;
+    background: var(--bg);
+    color: var(--green-bright);
+    border: 1px solid var(--border-hot);
+    padding: 6px 4px;
+}
+
+#score-form button {
+    font: inherit;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--fg);
+    padding: 6px 12px;
+    cursor: pointer;
+}
+#score-form button[type="submit"] { color: var(--green); border-color: var(--border-hot); }
+#skip-btn { color: var(--muted); }
+#score-form button:hover { color: var(--green-bright); border-color: var(--green); }
+#initials-input:focus-visible,
+#score-form button:focus-visible,
+#mute-btn:focus-visible {
+    outline: 2px solid var(--green-bright);
+    outline-offset: 2px;
+}
+
+/* --- Help line -------------------------------------------------------------- */
+
+.game-help {
+    color: var(--muted);
+    font-size: 0.8rem;
+    letter-spacing: 0.06em;
+    margin-top: 10px;
+}

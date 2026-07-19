@@ -7,6 +7,8 @@ templates. New footer pages (resources/about) get their routes here.
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
+from app.config import settings
+
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
@@ -50,3 +52,13 @@ async def resources_readme(request: Request):
 @router.get("/about/how-it-works")
 async def about_how_it_works(request: Request):
     return templates.TemplateResponse(request, "about/how_it_works.html")
+
+
+# --- Game -------------------------------------------------------------------
+
+@router.get("/game")
+async def game(request: Request):
+    # Default arcade initials from USER_NAME ("Nemanja" -> "NEM"); USER_NAME
+    # defaults to "", so fall back to "ZYL".
+    initials = "".join(c for c in settings.user_name.upper() if c.isalnum())[:3] or "ZYL"
+    return templates.TemplateResponse(request, "game.html", {"default_initials": initials})

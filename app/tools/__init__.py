@@ -7,6 +7,7 @@ from app.tools import fs_tools as _fs_tools  # noqa: F401,E402
 from app.tools import system_tools as _system_tools  # noqa: F401,E402
 from app.tools import web_tools as _web_tools  # noqa: F401,E402
 from app.tools import action_tools as _action_tools  # noqa: F401,E402
+from app.tools import game_tools as _game_tools  # noqa: F401,E402
 
 
 def get_openai_tool_schemas(
