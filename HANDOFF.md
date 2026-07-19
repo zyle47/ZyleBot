@@ -16,7 +16,7 @@
 - `app/model_manager.py` — `models.json` aliases; drives the `lms` CLI (load/unload models, start/stop server).
 - `app/db.py` — raw sqlite3, no ORM: `conversations` + `messages`, WAL, guarded in-code migrations.
 - `app/config.py` — pydantic-settings `settings` singleton; defaults here, `.env` overrides.
-- `app/tools/` — `@tool` registry; SAFE (fs / system / web) vs CONFIRM_REQUIRED (write_file, append_file, make_directory, run_command).
+- `app/tools/` — `@tool` registry; SAFE (fs / system / web) vs CONFIRM_REQUIRED (write_file, append_file, make_directory, run_command). `list_directory` is backend-confined to the repository root derived from `fs_tools.py` and rejects resolved paths outside it.
 - `app/command_guard.py` — fail-closed classifier for `run_command`: BLOCK (refused unconditionally inside `run_command` itself, no override) / CONFIRM (today's human gate, the default) / ALLOW (known read-only, lets `agent_loop._needs_confirmation` skip the confirm prompt). Rules live in code, not `.env` — deliberately not a tunable. Recursively unpacks `$()`/`@()`/`&{}` PowerShell subexpressions so a destructive verb can't hide inside an otherwise-safe command; any such nesting is capped at CONFIRM even when benign.
 - `app/static/` + `app/templates/` — no-build vanilla JS/CSS/HTML; `app.js` parses SSE manually (fetch reader, since endpoints are POST).
   Jinja inheritance: `base.html` → `index.html` (app shell) and `base.html` → `page.html` → `product/*.html` / `resources/*.html` / `about/*.html` (content pages); shared footer partial `_footer.html`; `style.css` (app) + `pages.css` (content pages only).
@@ -40,8 +40,9 @@ model-search datalist as a fake login form; CSS `-webkit-text-security` masks it
 **no-auto-load guard** (`_turn_blocker()` in `main.py` refuses chat/confirm turns via an SSE `error`
 event — before any DB write — when no model is loaded locally or none selected on OpenRouter, so
 LM Studio's JIT load can never trigger silently) · voice input (faster-whisper on CPU, so it
-never competes for VRAM) · image input (client-side downscale, persisted per message) · dark neon UI
-with website-style footer (Product pages plus a styled `/resources/readme` guide) · cross-platform shell (PowerShell/bash) ·
+never competes for VRAM) · image input (client-side downscale, persisted per message) · dark neon
+**Tron-inspired liquid-glass UI** across chat, content pages, dialogs, footer, and Breakout
+(Product pages plus a styled `/resources/readme` guide) · cross-platform shell (PowerShell/bash) ·
 three-tier command guard in front of `run_command` (BLOCK/CONFIRM/ALLOW — see `app/command_guard.py`) ·
 **Breakout minigame** at `/game` (canvas, WebAudio SFX, SQLite `scores` table via `GET/POST /api/scores`,
 SAFE `get_game_scores` tool — chat shell untouched: own `game.html`/`game.css`/`game.js`, `app.js` never loads there) ·
@@ -56,6 +57,8 @@ forks the ball into three; a life is lost only when the LAST live ball drains, t
 Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Belgrade" triggers tools — or dispatch the `verifier` agent.
 
 ## Status (2026-07-19)
+
+- **`list_directory` workspace boundary is implemented and tested (new, uncommitted).** Relative paths resolve from the ZyleBot repository root (`F:\local_mythos` in this checkout); absolute outside paths, `..` traversal, similarly prefixed sibling folders, and resolved symlink/junction escapes are denied before enumeration. The tool schema advertises the allowed root. Coverage lives in `app/tests/test_fs_tools.py`; the full suite passes (7 tests, with the link-creation case skipped on Windows when the process lacks symlink privilege). This boundary applies specifically to `list_directory`; the other filesystem tools and approved shell commands retain their existing scopes.
 
 - Everything above through the command guard is committed (through `aabd63f`). Uncommitted: current-state docs, aligned Claude/Codex specialist definitions, project-scoped Codex configuration, and the whole Breakout feature (new: `game.html`/`game.css`/`game.js`/`tools/game_tools.py`; edits: `pages.py`, `db.py`, `models.py`, `main.py`, `tools/__init__.py`, `_footer.html`, README).
 
@@ -99,6 +102,13 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
   masks unchanged — one random non-Piercer mosaic brick becomes 4-hit `splitter: true`), splits fan
   ±0.55 rad around the breaking ball's heading at `game.speed`, and pierce applies globally to all balls.
   `game.js` is 925 lines. Not yet play-verified by Nemanja.
+
+- **Liquid-glass visual layer is implemented (new, uncommitted).** `style.css` defines shared translucent
+  surfaces, backdrop blur/saturation, soft highlights, rounded depth, ambient neon blooms, and a calmer Tron
+  grid for the chat shell. `pages.css` extends the system to editorial cards, navigation, CTAs, tables, and
+  diagrams; `game.css` applies it to the HUD, stage frame, controls, and overlays while keeping the canvas crisp.
+  Responsive overrides preserve the compact mobile layout. No HTML or JavaScript behavior changed; CSS brace
+  checks and the standard unittest suite pass. Refresh the browser to evaluate or tune the aesthetic.
 
 - Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys. Possible follow-up worth a deliberate decision (not yet built): narrow the ALLOW tier so `cat`/`type`/`Get-Content` (which can read arbitrary file content, not just enumerate) require confirmation even for non-protected paths — currently accepted as-is since it matches the original spec and CONFIRM was always the fallback before this feature existed.
 

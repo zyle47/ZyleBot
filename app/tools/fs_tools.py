@@ -9,6 +9,10 @@ from app.tools.base import RiskTier, tool
 
 _MAX_LIST_ENTRIES = 500
 _SEARCH_TIMEOUT_S = 15.0
+# list_directory is intentionally confined to ZyleBot's own project tree.
+# Deriving this from the module location keeps the boundary stable even when
+# uvicorn is launched from another working directory.
+_LIST_DIRECTORY_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _iso(ts: float) -> str:
@@ -19,18 +23,34 @@ def _resolve(path: str) -> Path:
     return Path(path).expanduser().resolve()
 
 
+def _resolve_list_directory_path(path: str) -> Path | None:
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = _LIST_DIRECTORY_ROOT / candidate
+    target = candidate.resolve()
+    try:
+        target.relative_to(_LIST_DIRECTORY_ROOT)
+    except ValueError:
+        return None
+    return target
+
+
 @tool(
     name="list_directory",
     description=(
         "List the files and subfolders in a directory, with each entry's name, "
-        "whether it is a folder, size in bytes, and last-modified timestamp."
+        "whether it is a folder, size in bytes, and last-modified timestamp. "
+        f"Access is restricted to {_LIST_DIRECTORY_ROOT} and its descendants."
     ),
     parameters_schema={
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Absolute or relative Windows path to the directory to list.",
+                "description": (
+                    f"A path within {_LIST_DIRECTORY_ROOT}. Relative paths are resolved "
+                    "from that directory."
+                ),
             }
         },
         "required": ["path"],
@@ -38,7 +58,12 @@ def _resolve(path: str) -> Path:
     risk_tier=RiskTier.SAFE,
 )
 def list_directory(path: str) -> dict[str, Any]:
-    target = _resolve(path)
+    target = _resolve_list_directory_path(path)
+    if target is None:
+        return {
+            "error": "access denied: list_directory is restricted to the ZyleBot workspace",
+            "allowed_root": str(_LIST_DIRECTORY_ROOT),
+        }
     if not target.exists():
         return {"error": "path not found", "path": str(target)}
     if not target.is_dir():

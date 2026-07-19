@@ -162,3 +162,58 @@
     letter-spacing: 0.06em;
     margin-top: 10px;
 }
+
+/* Liquid-glass framing keeps the arcade canvas sharp while the controls float. */
+.game-hud {
+    margin-bottom: 8px;
+    padding: 10px 14px;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background:
+        linear-gradient(145deg, rgba(235, 255, 248, 0.07), transparent 28%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+}
+
+#mute-btn,
+#score-form button,
+#initials-input { border-radius: var(--radius-sm); }
+
+#mute-btn,
+#score-form button {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 50%),
+        rgba(103, 255, 183, 0.045);
+    box-shadow: inset 0 1px 0 rgba(235, 255, 248, 0.08);
+}
+
+.game-stage {
+    overflow: hidden;
+    border-color: rgba(203, 255, 239, 0.2);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--glass-shadow), 0 0 34px rgba(103, 255, 183, 0.08);
+}
+
+.game-panel {
+    border-color: rgba(203, 255, 239, 0.24);
+    border-radius: var(--radius-lg);
+    background:
+        linear-gradient(145deg, rgba(235, 255, 248, 0.11), transparent 30%),
+        linear-gradient(315deg, rgba(255, 60, 172, 0.07), transparent 42%),
+        rgba(5, 17, 14, 0.7);
+    box-shadow: var(--glass-shadow), 0 0 30px rgba(103, 255, 183, 0.08);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
+}
+
+#initials-input { background: rgba(2, 9, 7, 0.62); }
+
+@media (max-width: 680px) {
+    #game-root { padding-inline: 0; }
+    .game-hud { gap: 12px; font-size: 0.78rem; }
+    .game-stage { border-radius: var(--radius-md); }
+    .game-panel { max-width: calc(100% - 24px); padding: 22px 20px; border-radius: var(--radius-md); }
+    .score-rows { min-width: min(300px, 72vw); }
+}

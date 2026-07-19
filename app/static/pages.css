@@ -759,3 +759,108 @@ body.page { overflow-y: auto; }
     .page-cta::after { font-size: 5rem; }
     .readme-nav { grid-template-columns: 1fr; }
 }
+
+/* --- Liquid glass content surfaces --------------------------------------- */
+.page-shell { z-index: 1; }
+
+.page-header {
+    margin-bottom: clamp(1.4rem, 3vw, 2.3rem);
+    padding: 0.72rem 0.85rem;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-lg);
+    background:
+        linear-gradient(110deg, rgba(103, 255, 183, 0.075), transparent 38%),
+        linear-gradient(290deg, rgba(255, 60, 172, 0.05), transparent 34%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(145%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(145%);
+}
+
+.page-signal-row span,
+.control-state,
+.page-section code {
+    border-radius: 999px;
+    box-shadow: inset 0 1px 0 rgba(235, 255, 248, 0.07);
+}
+
+.page-intro {
+    border: 1px solid rgba(255, 139, 208, 0.16);
+    border-left: 2px solid var(--pink);
+    border-radius: var(--radius-lg);
+    background:
+        linear-gradient(100deg, rgba(255, 60, 172, 0.1), transparent 72%),
+        rgba(11, 16, 15, 0.38);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    backdrop-filter: blur(16px) saturate(130%);
+}
+
+.page-section,
+.page-cta {
+    border-color: var(--glass-stroke);
+    border-radius: var(--radius-lg);
+    background:
+        linear-gradient(145deg, rgba(235, 255, 248, 0.065), transparent 24%),
+        linear-gradient(110deg, rgba(103, 255, 183, 0.055), transparent 38%),
+        linear-gradient(290deg, rgba(255, 60, 172, 0.04), transparent 34%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+}
+
+.page-section--accent {
+    border-color: rgba(255, 139, 208, 0.24);
+    background:
+        linear-gradient(145deg, rgba(255, 235, 248, 0.07), transparent 26%),
+        linear-gradient(110deg, rgba(255, 60, 172, 0.1), transparent 42%),
+        linear-gradient(290deg, rgba(103, 255, 183, 0.045), transparent 36%),
+        var(--glass);
+}
+
+.page-section--warning {
+    border-color: rgba(255, 209, 102, 0.28);
+    background:
+        linear-gradient(145deg, rgba(255, 249, 222, 0.065), transparent 26%),
+        linear-gradient(110deg, rgba(255, 209, 102, 0.095), transparent 46%),
+        rgba(18, 16, 7, 0.55);
+}
+
+.capability-grid article,
+.control-grid article,
+.example-trace span,
+.action-list > div,
+.workflow-stack article,
+.risk-card,
+.readme-nav a,
+.system-diagram,
+.command-block,
+.readme-table-wrap {
+    border-radius: var(--radius-md);
+    background-color: rgba(3, 13, 10, 0.44);
+    box-shadow: inset 0 1px 0 rgba(235, 255, 248, 0.055), 0 8px 24px rgba(0, 0, 0, 0.12);
+    -webkit-backdrop-filter: blur(12px) saturate(125%);
+    backdrop-filter: blur(12px) saturate(125%);
+}
+
+.process-list li::before {
+    border-radius: 50%;
+    box-shadow: inset 0 1px 0 rgba(235, 255, 248, 0.11), 0 0 16px rgba(103, 255, 183, 0.08);
+}
+
+.page-cta-link {
+    border-radius: var(--radius-sm);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 48%),
+        rgba(255, 60, 172, 0.11);
+    box-shadow: inset 0 1px 0 rgba(255, 235, 248, 0.1);
+}
+
+@media (max-width: 680px) {
+    .page-shell { padding: 0.75rem; }
+    .page-header { margin-bottom: 1.25rem; border-radius: var(--radius-md); }
+    .page-section,
+    .page-intro,
+    .page-cta { border-radius: var(--radius-md); }
+}

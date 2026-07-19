@@ -120,7 +120,7 @@ These run automatically so the agent can gather evidence without interrupting th
 
 | Tool | Purpose |
 |---|---|
-| `list_directory` | List a folder's contents with basic metadata. |
+| `list_directory` | List contents within the ZyleBot project folder only, with basic metadata. |
 | `read_file` | Read a text file up to the configured byte limit, with best-effort UTF-8 decoding. |
 | `search_files` | Find files recursively with a glob pattern. |
 | `get_file_info` | Inspect file or folder metadata. |
@@ -155,6 +155,10 @@ Every proposed command is classified before it can run:
 The command guard is a fail-closed safety layer, not a security sandbox. An approved
 command runs with the same operating-system privileges as the ZyleBot process, so only
 approve a command you would run yourself.
+
+`list_directory` has an additional enforced boundary: it accepts only the ZyleBot project
+folder and its descendants. Relative paths are resolved from that project folder, and
+path traversal or filesystem links cannot be used to list directories outside it.
 
 ## How it works
 
