@@ -1,0 +1,21 @@
+{# Board-only Breakout for arena iframes and pop-out windows. Extends base.html
+   (theme via style.css) plus pages.css + game.css; a dedicated body class lets
+   the board fill its frame without the site header/footer. #}
+{% extends "base.html" %}
+
+{% block title %}Breakout — ZyleBot{% endblock %}
+
+{% block body_class %}page game-embed{% endblock %}
+
+{% block head_extra %}
+    <link rel="stylesheet" href="/static/pages.css">
+    <link rel="stylesheet" href="/static/game.css">
+{% endblock %}
+
+{% block content %}
+    {% include "_game_board.html" %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/game.js"></script>
+{% endblock %}

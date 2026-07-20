@@ -335,14 +335,33 @@ async def submit_score(req: ScoreSubmit):
     return {"entry": entry, "top": db.top_scores()}
 
 
+@app.get("/api/game-agent/status")
+async def game_agent_status():
+    """Read-only policy status for the arena header. Never loads torch or LM
+    Studio; a plain GET, so no confirmation tier. Triggers the throttled
+    hot-reload check, so a freshly published policy surfaces here within ~1s."""
+    from app import rl_policy
+
+    try:
+        policy = rl_policy.get_policy()
+    except PolicyUnavailableError:
+        return {"available": False}
+    return {
+        "available": True,
+        "observation_version": policy.observation_version,
+        "training_steps": policy.training_steps,
+        "eval_score": policy.eval_score,
+    }
+
+
 @app.websocket("/ws/game-agent")
 async def game_agent(websocket: WebSocket):
     """Serve level-one Breakout actions from the exported numpy policy."""
     await websocket.accept()
-    try:
-        from app import rl_policy
+    from app import rl_policy
 
-        policy = rl_policy.get_policy()
+    try:
+        rl_policy.get_policy()  # availability gate; also primes the singleton
     except PolicyUnavailableError:
         await websocket.send_json({"error": "no-policy"})
         await websocket.close(code=1000)
@@ -352,6 +371,9 @@ async def game_agent(websocket: WebSocket):
         while True:
             try:
                 payload = await websocket.receive_json()
+                # Re-fetch each message so an atomically hot-reloaded policy takes
+                # effect mid-connection; once loaded this keeps the last good one.
+                policy = rl_policy.get_policy()
                 bricks = payload.get("bricks")
                 if (
                     not isinstance(bricks, str)
@@ -371,7 +393,15 @@ async def game_agent(websocket: WebSocket):
                     "bricks": [(int(hits), 1) for hits in bricks],
                 }
                 action = policy.act(state)
-            except (AttributeError, IndexError, KeyError, TypeError, ValueError, OverflowError):
+            except (
+                PolicyUnavailableError,
+                AttributeError,
+                IndexError,
+                KeyError,
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
                 action = 0
             await websocket.send_json({"action": action})
     except WebSocketDisconnect:

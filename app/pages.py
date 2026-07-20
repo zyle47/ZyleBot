@@ -61,9 +61,20 @@ async def about_how_it_works(request: Request):
 
 # --- Game -------------------------------------------------------------------
 
-@router.get("/game")
-async def game(request: Request):
+def _default_initials() -> str:
     # Default arcade initials from USER_NAME ("Nemanja" -> "NEM"); USER_NAME
     # defaults to "", so fall back to "ZYL".
-    initials = "".join(c for c in settings.user_name.upper() if c.isalnum())[:3] or "ZYL"
-    return templates.TemplateResponse(request, "game.html", {"default_initials": initials})
+    return "".join(c for c in settings.user_name.upper() if c.isalnum())[:3] or "ZYL"
+
+
+@router.get("/game")
+async def game(request: Request, embed: bool = False):
+    # embed=1 renders the board-only template for arena iframes / pop-outs;
+    # absent/false keeps the ordinary full page. Same initials for both.
+    template = "game_embed.html" if embed else "game.html"
+    return templates.TemplateResponse(request, template, {"default_initials": _default_initials()})
+
+
+@router.get("/game/arena")
+async def game_arena(request: Request):
+    return templates.TemplateResponse(request, "game_arena.html", {"default_initials": _default_initials()})

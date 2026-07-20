@@ -250,6 +250,66 @@
         frame: 0,
     };
 
+    // --- Spectator mode (arena tiles / pop-outs) -----------------------------
+    // Query contract: ?embed=1&ai=1&spectator=1&slot=N. `ai=1` connects the AI
+    // and auto-starts level 1; `spectator=1` (honored only with ai=1) adds the
+    // unattended viewer rules: silent, no score POST, loop level 1 forever, and
+    // publish ready/run-end/offline events to the arena via postMessage. Plain
+    // /game (no params) is untouched: spectator.active stays false everywhere.
+    const params = new URLSearchParams(location.search);
+    const clampSlot = (value) => {
+        const n = Math.floor(Number(value));
+        return Number.isFinite(n) ? Math.max(1, Math.min(n, 6)) : 1;
+    };
+    const aiRequested = params.get("ai") === "1";
+    const spectator = {
+        active: aiRequested && params.get("spectator") === "1",
+        slot: clampSlot(params.get("slot")),
+        // Pop-outs report to window.opener; iframes to window.parent.
+        target: window.opener || (window.parent !== window ? window.parent : null),
+        runReported: false,
+        restartTimer: null,
+    };
+
+    function postToArena(message) {
+        if (!spectator.active || !spectator.target) return;
+        try {
+            spectator.target.postMessage(message, location.origin);
+        } catch {
+            /* target window gone — nothing to report to */
+        }
+    }
+
+    function reportRun(cleared) {
+        // Count a run once even if a state transition and a timer both fire.
+        if (!spectator.active || spectator.runReported) return;
+        spectator.runReported = true;
+        postToArena({
+            type: "breakout-spectator-run-end",
+            slot: spectator.slot,
+            score: game.score,
+            cleared,
+            reason: cleared ? "level-cleared" : "game-over",
+        });
+    }
+
+    function scheduleSpectatorRestart() {
+        if (!spectator.active || spectator.restartTimer !== null) return;
+        // Show the panel briefly, then loop level 1 — only while the AI is still
+        // online (offline stops the loop; we never auto-reconnect).
+        spectator.restartTimer = setTimeout(() => {
+            spectator.restartTimer = null;
+            if (spectator.active && ai.enabled) startGame(1);
+        }, 1500);
+    }
+
+    function cancelSpectatorRestart() {
+        if (spectator.restartTimer !== null) {
+            clearTimeout(spectator.restartTimer);
+            spectator.restartTimer = null;
+        }
+    }
+
     function setState(next) {
         state = next;
         for (const [name, panel] of Object.entries(panels)) {
@@ -265,8 +325,15 @@
             fetchScores();
         } else if (next === State.GAME_OVER) {
             finalScoreEl.textContent = `SCORE ${String(game.score).padStart(6, "0")}`;
-            initialsInput.value = defaultInitials;
-            initialsInput.focus();
+            if (spectator.active) {
+                // Report the run, show the panel briefly, then loop level 1.
+                // No initials focus, no score POST.
+                reportRun(false);
+                scheduleSpectatorRestart();
+            } else {
+                initialsInput.value = defaultInitials;
+                initialsInput.focus();
+            }
         }
         if (next === State.READY && ai.enabled) {
             setTimeout(() => {
@@ -337,6 +404,7 @@
     }
 
     function startGame(startLevel = 1) {
+        if (spectator.active) spectator.runReported = false;  // fresh run
         game.score = 0;
         game.level = startLevel;
         game.lives = START_LIVES;
@@ -445,6 +513,12 @@
         ai.socket = null;
         if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000);
         hud.aiBadge.hidden = !offline;
+        if (spectator.active && offline) {
+            // Stop the loop and tell the arena; do NOT auto-reconnect (the arena
+            // or the user recovers via START ALL — no reconnect storm).
+            cancelSpectatorRestart();
+            postToArena({ type: "breakout-spectator-offline", slot: spectator.slot });
+        }
         updateAiControl();
     }
 
@@ -458,6 +532,9 @@
         const socket = new WebSocket(`${scheme}://${location.host}/ws/game-agent`);
         ai.socket = socket;
         socket.addEventListener("open", () => {
+            if (spectator.active) {
+                postToArena({ type: "breakout-spectator-ready", slot: spectator.slot });
+            }
             if (ai.enabled && state === State.ATTRACT) startGame(1);
         });
         socket.addEventListener("message", (event) => {
@@ -655,6 +732,16 @@
                 }
 
                 if (!brick.alive && game.bricksAlive === 0) {
+                    if (spectator.active) {
+                        // v1 policy is level-1-only: count a win and loop level 1
+                        // instead of building level 2.
+                        playSfx("levelclear");
+                        reportRun(true);
+                        setState(State.LEVEL_CLEAR);
+                        resetBall();
+                        scheduleSpectatorRestart();
+                        return;
+                    }
                     setState(State.LEVEL_CLEAR);
                     game.level++;
                     game.speed = Math.min(
@@ -921,7 +1008,9 @@
     }
 
     function bindMute() {
-        let muted = localStorage.getItem(MUTED_KEY) === "true";
+        // Spectator tiles are forced silent and must NOT touch the shared mute
+        // preference in localStorage (that belongs to the real /game).
+        let muted = spectator.active ? true : localStorage.getItem(MUTED_KEY) === "true";
         const updateMute = () => {
             hud.mute.textContent = muted ? "SOUND: OFF" : "SOUND: ON";
             hud.mute.setAttribute("aria-pressed", String(muted));
@@ -932,7 +1021,7 @@
         updateMute();
         hud.mute.addEventListener("click", () => {
             muted = !muted;
-            localStorage.setItem(MUTED_KEY, String(muted));
+            if (!spectator.active) localStorage.setItem(MUTED_KEY, String(muted));
             updateMute();
             hud.mute.blur();
         });
@@ -988,6 +1077,7 @@
         const submitBtn = scoreForm.querySelector('button[type="submit"]');
         scoreForm.addEventListener("submit", async (e) => {
             e.preventDefault();
+            if (spectator.active) return;  // spectators never POST a score
             if (submitBtn.disabled) return;
             submitBtn.disabled = true;
             try {
@@ -1022,6 +1112,8 @@
         bindScoreForm();
         startLoop();
         setState(State.ATTRACT);
+        // ?ai=1 connects the AI and auto-starts level 1 (arena tiles / pop-outs).
+        if (aiRequested) enableAi();
     }
 
     init();

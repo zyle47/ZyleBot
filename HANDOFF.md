@@ -2,7 +2,7 @@
 
 > Living *current-state* doc — what exists, what's in flight, and the gotchas that save debugging
 > time. **The main (orchestrator) model updates this file every time work lands** — subagents
-> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-19**.
+> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-20**.
 >
 > Companions: `CLAUDE.md` (shared project rules + Claude agent routing), `README.md` (user-facing setup/tools),
 > `.codex/config.toml` + `.codex/agents/` (project-scoped Codex configuration and specialist roles).
@@ -128,13 +128,49 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
   keeps the 10k random warmup; runs of 10k steps or fewer shorten warmup to make the specified 5k
   end-to-end smoke test exercise learning and emit a finite loss.
 
-- **AI Spectator Arena is planned and briefed (not implemented).**
-  `briefs/rl-breakout-spectator-arena.md` is the implementation contract for Claude: `/game/arena`
-  with 1/2/4/6 independent spectator games, literal pop-outs, unattended level-1 looping, aggregate
-  viewer stats, atomic policy export, safe numpy hot reload, policy-status API, and opt-in
-  `rl.train --live-export`. It explicitly preserves ordinary `/game`, physics/rewards, the chat
-  shell, app dependencies, and the database. The currently running trainer can publish snapshots
-  only through manual `export_policy`; a future process can use the opt-in flag.
+- **RL fine-tuning controls are implemented (new, uncommitted).** `rl.train` now accepts
+  `--learning-rate`, `--eval-episodes`, and `--fork-run` alongside the arena work's opt-in
+  `--live-export`. Resumes preserve the optimizer/checkpoint learning rate unless explicitly
+  overridden. Forking creates a collision-safe new run directory, re-evaluates the source policy
+  as a comparable baseline, and seeds that branch with local `best.pt`/`latest.pt`, avoiding
+  duplicate/out-of-order rows in the source log. Changing eval sample size on a non-fork resume is
+  rejected. Checkpoints now record learning rate and eval count. Eleven RL tests pass, including
+  checkpoint metadata/LR round-trip/run-directory coverage; a real CPU fork smoke from the 5k
+  checkpoint verified `3e-5`, two-episode re-baselining, isolated log/checkpoints, and one added step.
+
+- **AI Spectator Arena is implemented and verified (new, uncommitted).** Built to
+  `briefs/rl-breakout-spectator-arena.md`. `/game/arena` runs 1/2/4/6 independent spectator games
+  (default 4, hard cap 6) as same-origin iframes of the new board-only `/game?embed=1&ai=1&spectator=1&slot=N`,
+  with `START ALL` / `STOP ALL` / literal `POP OUT` (stable per-slot window names; popped slots stop
+  their iframe to avoid double inference; blocked popups degrade to `POPUP BLOCKED`). Spectator rules
+  live in `game.js` behind `spectator.active` (params-gated, ordinary `/game` untouched): auto-start
+  level 1, forced-silent without writing the shared `MUTED_KEY`, no score POST, loop level 1 on
+  GAME_OVER / level-1 clear (never builds level 2), and `postMessage` ready/run-end/offline to
+  `window.opener || window.parent`. The arena (`game-arena.js`) accepts only same-origin, shape- and
+  slot-validated (1–6) messages, aggregates **viewer** stats (runs / clears / clear% / mean / high —
+  explicitly NOT trainer `eval_score_mean`), and polls `GET /api/game-agent/status` every 2 s.
+  Template refactor: shared `_game_board.html` included by `game.html` (full page + `AI ARENA` link)
+  and new `game_embed.html` (body `game-embed`); new `game_arena.html`. `base.html`/`page.html`/
+  `index.html`/`app.js`/`style.css` untouched.
+  - **Atomic export + hot reload.** `rl/export_policy.py` now has a torch-free `publish_policy()`
+    (staged temp files → `os.replace` meta.json → `os.replace` the `.npz` LAST as the commit marker;
+    temps cleaned on failure) that also writes `observation_version`/`training_steps`/`eval_score`
+    scalars *inside* the NPZ so fresh weights never pair with a stale `meta.json`. `app/rl_policy.py`
+    stays numpy-only: a lazy singleton stat-checks the commit marker (throttled ≤1/s across sockets),
+    fully validates a candidate (shape + `level1-v1`) before swapping, and keeps the last known-good on
+    a bad/missing/wrong-version replacement (`no-policy` only if none ever loaded). `/ws/game-agent`
+    re-fetches the policy per message so a swap takes effect mid-run. `rl.train --live-export` (opt-in,
+    off by default) publishes each improved `best.pt` the same way; the current run still publishes via
+    manual `rl.export_policy --ckpt <run>\best.pt` (both hot-reload without a restart).
+  - **Verified:** full app suite **39 tests green** (2 Windows-symlink skips) incl. new pages
+    (full/embed/arena, DOM-id preservation), atomic-export/strict-meta/staged-failure, hot-reload
+    swap + corrupt/wrong-shape/wrong-version/missing keep-last-good, and `/api/game-agent/status`
+    unavailable/loaded/reloaded; RL env suite **11 green**; `node --check` on both JS files + CSS brace
+    balance OK. Live: all routes 200, status read the live policy (step 1.73M / eval 884 mid-training —
+    hot reload sees the current file), and a **4-client / 30 Hz / 60 s** WS harness passed (5092 msgs,
+    avg <1 ms, peak 2.27 ms round-trip, `/status` max 12.8 ms, no disconnects, all actions in 0|1|2).
+    **Browser/visual QA (iframe grid render, real pop-out windows, spectator loop visuals) is still
+    for Nemanja** — no in-app browser was connected this session.
 
 - Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys. Possible follow-up worth a deliberate decision (not yet built): narrow the ALLOW tier so `cat`/`type`/`Get-Content` (which can read arbitrary file content, not just enumerate) require confirmation even for non-protected paths — currently accepted as-is since it matches the original spec and CONFIRM was always the fallback before this feature existed.
 

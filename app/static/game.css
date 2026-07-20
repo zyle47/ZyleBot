@@ -232,3 +232,40 @@
     .game-panel { max-width: calc(100% - 24px); padding: 22px 20px; border-radius: var(--radius-md); }
     .score-rows { min-width: min(300px, 72vw); }
 }
+
+/* --- Embedded board (arena iframe / pop-out window) ------------------------ */
+/* game_embed.html gives body the `game-embed` class so the board-only markup
+   fills its frame without the site header/footer. Loaded after pages.css, so
+   these win over body.page. */
+body.game-embed {
+    overflow: hidden;
+    background: var(--bg-deep);
+}
+body.game-embed #game-root {
+    max-width: 100%;
+    margin: 0;
+    padding: 6px 8px 8px;
+}
+body.game-embed .game-help { display: none; }
+body.game-embed .game-hud {
+    gap: 10px 14px;
+    margin-bottom: 6px;
+    padding: 6px 10px;
+    font-size: 0.68rem;
+}
+/* The AI/SOUND toggles are inert in a spectator tile; keep the HUD compact. */
+body.game-embed .game-panel { padding: 16px 20px; }
+body.game-embed .score-rows { min-width: 0; }
+
+/* --- AI ARENA link (ordinary /game page only) ------------------------------ */
+.game-arena-link {
+    max-width: 840px;
+    margin: 0 auto 4px;
+    padding: 0 4px;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-align: right;
+}
+.game-arena-link a { color: var(--muted); text-decoration: none; }
+.game-arena-link a:hover { color: var(--green-bright); }

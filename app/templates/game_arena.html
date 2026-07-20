@@ -1,0 +1,61 @@
+{# AI Spectator Arena: a game-only dashboard of independent spectator games.
+   Tiles are same-origin iframes (game_embed.html); pop-outs are real windows.
+   All stats here are three-life viewer runs, NOT the trainer's eval_score_mean. #}
+{% extends "base.html" %}
+
+{% block title %}AI Arena — ZyleBot{% endblock %}
+
+{% block body_class %}page game-arena{% endblock %}
+
+{% block head_extra %}
+    <link rel="stylesheet" href="/static/pages.css">
+    <link rel="stylesheet" href="/static/game.css">
+    <link rel="stylesheet" href="/static/game-arena.css">
+{% endblock %}
+
+{% block content %}
+    <div class="arena-shell" data-embed-src="/game?embed=1&amp;ai=1&amp;spectator=1" data-max-games="6" data-default-games="4">
+        <header class="arena-header">
+            <div class="arena-title">
+                <a class="brand" href="/game">&lt;/ back to game</a>
+                <h1>BREAKOUT <span>// AI ARENA</span></h1>
+            </div>
+            <div class="arena-policy" aria-live="polite">
+                <span id="policy-state" class="policy-state policy-state--checking">CHECKING…</span>
+                <span id="policy-steps" class="policy-metric">STEP —</span>
+                <span id="policy-eval" class="policy-metric">EVAL —</span>
+            </div>
+        </header>
+
+        <div class="arena-controls">
+            <div class="arena-count" id="arena-count" role="group" aria-label="Number of games">
+                <button type="button" data-count="1">1</button>
+                <button type="button" data-count="2">2</button>
+                <button type="button" data-count="4" aria-pressed="true">4</button>
+                <button type="button" data-count="6">6</button>
+            </div>
+            <div class="arena-actions">
+                <button type="button" id="start-all">START ALL</button>
+                <button type="button" id="stop-all">STOP ALL</button>
+                <button type="button" id="pop-out">POP OUT</button>
+            </div>
+        </div>
+
+        <div id="arena-grid" class="arena-grid" data-count="4" aria-label="Spectator games"></div>
+
+        <section class="arena-stats" aria-label="Viewer statistics">
+            <h2>VIEWER STATS <span>· three-life browser runs, not trainer eval</span></h2>
+            <div class="stat-grid">
+                <div class="stat"><span class="stat-label">RUNS</span><span class="stat-value" id="stat-runs">0</span></div>
+                <div class="stat"><span class="stat-label">LVL-1 CLEARS</span><span class="stat-value" id="stat-clears">0</span></div>
+                <div class="stat"><span class="stat-label">CLEAR %</span><span class="stat-value" id="stat-clearpct">—</span></div>
+                <div class="stat"><span class="stat-label">MEAN SCORE</span><span class="stat-value" id="stat-mean">—</span></div>
+                <div class="stat"><span class="stat-label">HIGH SCORE</span><span class="stat-value" id="stat-high">—</span></div>
+            </div>
+        </section>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/game-arena.js"></script>
+{% endblock %}

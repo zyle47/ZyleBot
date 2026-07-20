@@ -295,6 +295,63 @@ Training defaults to two million steps, uses CUDA automatically when available, 
 and checkpoints under ignored `rl/runs/`, and supports `--resume <checkpoint>`. Run the RL tests
 with `rl\venv\Scripts\python.exe -m unittest discover -s rl/tests -v`.
 
+For a clean fine-tuning branch from a trained best checkpoint, use `--fork-run`. It creates a new
+timestamped run, re-evaluates the source policy as that branch's baseline, and keeps the original
+CSV/checkpoints untouched. `--steps` is additional work, and a resumed run preserves its saved
+learning rate unless `--learning-rate` is supplied:
+
+```powershell
+rl\venv\Scripts\python.exe -m rl.train `
+    --resume rl\runs\<source-run>\best.pt `
+    --fork-run `
+    --steps 5000000 `
+    --learning-rate 0.00003 `
+    --eval-episodes 10 `
+    --device cuda `
+    --seed 42 `
+    --live-export
+```
+
+Changing the number of evaluation episodes on resume requires `--fork-run`, keeping best-score
+comparisons statistically consistent. `--live-export` is opt-in and atomically publishes only a
+new best policy for the browser showcase.
+
+## AI Spectator Arena
+
+Open [`/game/arena`](http://127.0.0.1:8000/game/arena) (also linked from `/game`) to watch several
+independent copies of the exported policy play at once. The header shows the active policy's
+training step and eval score plus the connection state.
+
+- **1 / 2 / 4 / 6** picks how many games run — default `4`, hard cap `6`. `START ALL` / `STOP ALL`
+  restart or halt every slot.
+- **Grid** tiles are same-origin iframes that start themselves, stay muted, never submit a score,
+  and loop level 1 (GAME_OVER or a level-1 clear restarts after ~1.5 s). **POP OUT** re-hosts the
+  selected games as real browser windows; a popped-out slot stops its grid iframe so inference is
+  not doubled, and a blocked popup degrades cleanly to a `POPUP BLOCKED` grid tile.
+- **Viewer stats** (runs, level-1 clears, clear %, mean and highest final score) come from ordinary
+  three-life browser runs. They are deliberately **not** the trainer's single-life `eval_score_mean`.
+
+Arena runs read whatever policy is published in `rl/policy/`. Publishing a better one takes effect
+without restarting ZyleBot:
+
+- **Manual export** (the supported way to snapshot the currently running trainer):
+
+  ```powershell
+  $run = Get-ChildItem .\rl\runs -Directory |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 1
+
+  .\rl\venv\Scripts\python.exe -m rl.export_policy --ckpt "$($run.FullName)\best.pt"
+  ```
+
+- **`--live-export`** publishes each new best automatically during a *future* training run (above).
+
+Either way the export is atomic (the `.npz` is replaced last, as the commit marker) and the app
+hot-reloads it — a throttled stat check swaps in a valid newer policy and keeps the last known-good
+one if a replacement is corrupt, wrong-shaped, or the wrong observation version. `GET
+/api/game-agent/status` (polled by the arena every 2 s) reports the active policy without loading
+torch or touching LM Studio.
+
 ## Limitations
 
 - **Vision and tools are separate.** The current LM Studio stack drops image input when

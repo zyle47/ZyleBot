@@ -18,7 +18,12 @@ TARGET_SYNC_INTERVAL = 2_000
 
 
 class DQNAgent:
-    def __init__(self, device: torch.device, seed: int = 0) -> None:
+    def __init__(
+        self,
+        device: torch.device,
+        seed: int = 0,
+        learning_rate: float = LEARNING_RATE,
+    ) -> None:
         self.device = device
         torch.manual_seed(seed)
         if device.type == "cuda":
@@ -29,7 +34,7 @@ class DQNAgent:
         self.target = QNetwork().to(device)
         self.target.load_state_dict(self.online.state_dict())
         self.target.eval()
-        self.optimizer = torch.optim.Adam(self.online.parameters(), lr=LEARNING_RATE)
+        self.optimizer = torch.optim.Adam(self.online.parameters(), lr=learning_rate)
         self.loss_fn = nn.SmoothL1Loss()
         self.agent_steps = 0
         self.learn_steps = 0
@@ -39,6 +44,15 @@ class DQNAgent:
     def epsilon(self) -> float:
         fraction = min(1.0, self.agent_steps / EPSILON_DECAY_STEPS)
         return EPSILON_START + fraction * (EPSILON_END - EPSILON_START)
+
+    @property
+    def learning_rate(self) -> float:
+        return float(self.optimizer.param_groups[0]["lr"])
+
+    def set_learning_rate(self, learning_rate: float) -> None:
+        """Override Adam's rate while preserving its learned moment estimates."""
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = learning_rate
 
     def act(self, observation: np.ndarray, *, greedy: bool = False) -> int:
         if not greedy and self.rng.random() < self.epsilon:
@@ -80,6 +94,7 @@ class DQNAgent:
             "agent_steps": self.agent_steps,
             "learn_steps": self.learn_steps,
             "epsilon": self.epsilon,
+            "learning_rate": self.learning_rate,
             "best_eval_score": best_eval_score,
         }
 

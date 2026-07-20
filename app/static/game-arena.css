@@ -1,0 +1,222 @@
+/* AI Spectator Arena — loaded only by game_arena.html, on top of pages.css +
+   game.css. Reuses the :root theme vars from style.css; no new palette. */
+
+.arena-shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 20px 20px 48px;
+    font-family: var(--font-mono);
+    color: var(--fg);
+}
+
+/* --- Header ----------------------------------------------------------------- */
+
+.arena-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 18px;
+    margin-bottom: 16px;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background:
+        linear-gradient(145deg, rgba(235, 255, 248, 0.07), transparent 30%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    backdrop-filter: blur(18px) saturate(140%);
+}
+
+.arena-title { display: flex; flex-direction: column; gap: 4px; }
+.arena-title .brand {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+}
+.arena-title .brand:hover { color: var(--green-bright); }
+.arena-title h1 {
+    margin: 0;
+    font-size: 1.35rem;
+    letter-spacing: 0.16em;
+    color: var(--green);
+    text-shadow: var(--shadow-green);
+}
+.arena-title h1 span { color: var(--pink); }
+
+.arena-policy {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+}
+.policy-metric { color: var(--muted); }
+.policy-state {
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    letter-spacing: 0.12em;
+}
+.policy-state--checking { color: var(--muted); }
+.policy-state--ok { color: var(--green-bright); border-color: var(--border-hot); }
+.policy-state--warn { color: var(--amber); border-color: var(--amber); }
+.policy-state--error { color: var(--danger); border-color: var(--danger); opacity: 0.85; }
+
+/* --- Controls --------------------------------------------------------------- */
+
+.arena-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.arena-count, .arena-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.arena-controls button {
+    font: inherit;
+    color: var(--muted);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 50%),
+        rgba(103, 255, 183, 0.045);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 14px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    box-shadow: inset 0 1px 0 rgba(235, 255, 248, 0.08);
+}
+.arena-controls button:hover { color: var(--green-bright); border-color: var(--border-hot); }
+.arena-controls button:active { transform: translateY(1px); }
+.arena-count button { min-width: 42px; }
+.arena-count button[aria-pressed="true"] {
+    color: var(--green-bright);
+    border-color: var(--border-hot);
+    box-shadow: var(--shadow-green), inset 0 1px 0 rgba(235, 255, 248, 0.08);
+}
+#start-all { color: var(--green); border-color: var(--border-hot); }
+#pop-out { color: var(--amber); }
+.arena-controls button:focus-visible {
+    outline: 2px solid var(--green-bright);
+    outline-offset: 2px;
+}
+
+/* --- Grid of spectator tiles ----------------------------------------------- */
+
+.arena-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: 1fr;
+}
+.arena-grid[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
+.arena-grid[data-count="4"] { grid-template-columns: repeat(2, 1fr); }
+.arena-grid[data-count="6"] { grid-template-columns: repeat(3, 1fr); }
+
+.arena-tile {
+    border: 1px solid rgba(203, 255, 239, 0.2);
+    border-radius: var(--radius-lg);
+    background: var(--bg-deep);
+    box-shadow: var(--glass-shadow), 0 0 24px rgba(103, 255, 183, 0.06);
+    overflow: hidden;
+}
+
+.tile-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 12px;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid var(--glass-stroke);
+    background: var(--glass);
+}
+.tile-slot { color: var(--muted); }
+.tile-status { color: var(--muted); }
+.tile-status[data-state="running"] { color: var(--green-bright); }
+.tile-status[data-state="starting"] { color: var(--amber); }
+.tile-status[data-state="popped"] { color: var(--pink); }
+.tile-status[data-state="blocked"] { color: var(--danger); }
+.tile-status[data-state="offline"] { color: var(--muted); }
+
+.tile-frame {
+    position: relative;
+    aspect-ratio: 5 / 4;
+    background: var(--bg-deep);
+}
+.tile-iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+.tile-iframe[hidden] { display: none; }
+.tile-note {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+    letter-spacing: 0.12em;
+    text-align: center;
+    padding: 12px;
+}
+.tile-note[hidden] { display: none; }
+
+/* --- Viewer stats ----------------------------------------------------------- */
+
+.arena-stats {
+    margin-top: 22px;
+    padding: 16px 18px;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background:
+        linear-gradient(145deg, rgba(235, 255, 248, 0.06), transparent 30%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+}
+.arena-stats h2 {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    letter-spacing: 0.14em;
+    color: var(--green);
+}
+.arena-stats h2 span { color: var(--muted); font-size: 0.72rem; letter-spacing: 0.08em; }
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+}
+.stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: rgba(2, 9, 7, 0.5);
+}
+.stat-label { color: var(--muted); font-size: 0.68rem; letter-spacing: 0.1em; }
+.stat-value { color: var(--green-bright); font-size: 1.3rem; text-shadow: var(--shadow-green); }
+
+/* --- Responsive ------------------------------------------------------------- */
+
+@media (max-width: 860px) {
+    .arena-grid[data-count="2"],
+    .arena-grid[data-count="4"],
+    .arena-grid[data-count="6"] { grid-template-columns: 1fr; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 560px) {
+    .arena-shell { padding: 14px 12px 36px; }
+    .arena-controls { justify-content: flex-start; }
+}

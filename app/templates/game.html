@@ -7,52 +7,8 @@
 {% endblock %}
 
 {% block page_content %}
-    <div id="game-root" data-initials="{{ default_initials }}">
-        <div class="game-hud" aria-live="polite">
-            <span id="hud-score">SCORE 000000</span>
-            <span id="hud-level">LVL 1</span>
-            <span id="hud-lives">LIVES ●●●</span>
-            <span id="ai-badge" class="ai-badge" role="status" hidden>AI OFFLINE</span>
-            <button id="ai-btn" type="button" aria-pressed="false">AI: OFF</button>
-            <button id="mute-btn" type="button" aria-pressed="false">SOUND: ON</button>
-        </div>
-
-        <div class="game-stage">
-            <canvas id="game-canvas" width="800" height="600"></canvas>
-            <div id="game-overlay">
-                <section id="panel-attract" class="game-panel" hidden>
-                    <h1>BREAKOUT</h1>
-                    <p class="panel-hint">Press Enter or click to start · A lets the AI play · 1/2/3/4 starts at that level</p>
-                    <p class="panel-hint">Press 4 for Daja level!</p>
-                    <h2 class="score-title">// HIGH SCORES</h2>
-                    <ol id="score-rows" class="score-rows"></ol>
-                </section>
-
-                <section id="panel-paused" class="game-panel" hidden>
-                    <h2>PAUSED</h2>
-                    <p class="panel-hint">Space or Esc to resume</p>
-                </section>
-
-                <section id="panel-levelclear" class="game-panel" hidden>
-                    <h2>LEVEL CLEAR</h2>
-                    <p class="panel-hint">Space to launch the next wall</p>
-                </section>
-
-                <section id="panel-gameover" class="game-panel" hidden>
-                    <h2>GAME OVER</h2>
-                    <p id="final-score">SCORE 000000</p>
-                    <form id="score-form">
-                        <label for="initials-input">INITIALS</label>
-                        <input id="initials-input" maxlength="3" autocomplete="off" spellcheck="false">
-                        <button type="submit">SUBMIT</button>
-                        <button type="button" id="skip-btn">SKIP</button>
-                    </form>
-                </section>
-            </div>
-        </div>
-
-        <p class="game-help">mouse or ◄ ► to move · Space launches / pauses · Esc pauses · Enter starts</p>
-    </div>
+    <p class="game-arena-link"><a href="/game/arena">&gt;_ AI ARENA</a></p>
+    {% include "_game_board.html" %}
 {% endblock %}
 
 {% block scripts %}

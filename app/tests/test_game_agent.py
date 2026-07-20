@@ -4,8 +4,9 @@ import unittest
 from unittest.mock import patch
 
 from fastapi import WebSocketDisconnect
+from fastapi.testclient import TestClient
 
-from app.main import game_agent
+from app.main import app, game_agent
 from app.rl_policy import PolicyUnavailableError
 
 
@@ -64,6 +65,46 @@ class GameAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(socket.accepted)
         self.assertEqual(socket.sent, [{"error": "no-policy"}])
         self.assertEqual(socket.closed_with, 1000)
+
+
+class FakeLoadedPolicy:
+    def __init__(self, training_steps: int, eval_score: float | None) -> None:
+        self.observation_version = "level1-v1"
+        self.training_steps = training_steps
+        self.eval_score = eval_score
+
+
+class GameAgentStatusTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.client = TestClient(app)
+
+    def test_status_reports_unavailable_when_no_policy(self) -> None:
+        with patch("app.rl_policy.get_policy", side_effect=PolicyUnavailableError("none")):
+            response = self.client.get("/api/game-agent/status")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"available": False})
+
+    def test_status_reports_loaded_policy_fields(self) -> None:
+        with patch("app.rl_policy.get_policy", return_value=FakeLoadedPolicy(720_000, 454.0)):
+            response = self.client.get("/api/game-agent/status")
+        self.assertEqual(
+            response.json(),
+            {
+                "available": True,
+                "observation_version": "level1-v1",
+                "training_steps": 720_000,
+                "eval_score": 454.0,
+            },
+        )
+
+    def test_status_reflects_a_reloaded_policy(self) -> None:
+        with patch("app.rl_policy.get_policy", return_value=FakeLoadedPolicy(100, 10.0)):
+            first = self.client.get("/api/game-agent/status").json()
+        with patch("app.rl_policy.get_policy", return_value=FakeLoadedPolicy(200, 20.0)):
+            second = self.client.get("/api/game-agent/status").json()
+        self.assertEqual(first["training_steps"], 100)
+        self.assertEqual(second["training_steps"], 200)
+        self.assertEqual(second["eval_score"], 20.0)
 
 
 if __name__ == "__main__":
