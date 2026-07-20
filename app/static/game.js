@@ -448,6 +448,7 @@
         window.addEventListener("keydown", (e) => {
             ensureAudio();
             if (e.target.tagName === "INPUT") return;
+            if (spectator.active) return;  // spectator tiles are AI-only
 
             if (["ArrowLeft", "ArrowRight", "Space", "Escape"].includes(e.code)) {
                 e.preventDefault();
@@ -473,6 +474,7 @@
         });
         window.addEventListener("keyup", (e) => {
             if (e.target.tagName === "INPUT") return;
+            if (spectator.active) return;  // spectator tiles are AI-only
             if (["ArrowLeft", "ArrowRight", "Space", "Escape"].includes(e.code)) {
                 e.preventDefault();
             }
@@ -481,12 +483,14 @@
         });
         document.addEventListener("pointerdown", ensureAudio);
         stage.addEventListener("mousemove", (e) => {
+            if (spectator.active) return;  // hovering a tile must not steer the AI
             const rect = stage.getBoundingClientRect();
             const logicalX = (e.clientX - rect.left) / rect.width * W;
             game.paddle.x = Math.max(game.paddle.w / 2, Math.min(logicalX, W - game.paddle.w / 2));
             if (state === State.READY || state === State.LEVEL_CLEAR) resetBall();
         });
         stage.addEventListener("click", (e) => {
+            if (spectator.active) return;  // clicking a tile must not start/relaunch
             if (e.target.closest("#score-form")) return;
             // GAME_OVER deliberately absent: a stray click must not restart and
             // lose an unsubmitted score — leave via SUBMIT, SKIP, or Space/Enter.

@@ -146,7 +146,9 @@
 
 .tile-frame {
     position: relative;
-    aspect-ratio: 5 / 4;
+    /* Taller than the field's 4:3 to leave room for the HUD above it, so the
+       letterboxed canvas fills most of the tile with minimal side bars. */
+    aspect-ratio: 4 / 3.4;
     background: var(--bg-deep);
 }
 .tile-iframe {

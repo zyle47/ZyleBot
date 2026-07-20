@@ -236,22 +236,43 @@
 /* --- Embedded board (arena iframe / pop-out window) ------------------------ */
 /* game_embed.html gives body the `game-embed` class so the board-only markup
    fills its frame without the site header/footer. Loaded after pages.css, so
-   these win over body.page. */
+   these win over body.page. The board is a flex column that fills the iframe:
+   a compact HUD on top and the stage taking the rest. The canvas keeps its 4:3
+   field as its backing store and letterboxes into whatever box the flex gives
+   it (object-fit: contain), so the paddle at the bottom is never clipped —
+   regardless of tile width or how many rows the HUD wraps to. */
 body.game-embed {
+    margin: 0;
     overflow: hidden;
     background: var(--bg-deep);
 }
 body.game-embed #game-root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     max-width: 100%;
     margin: 0;
     padding: 6px 8px 8px;
+    box-sizing: border-box;
 }
 body.game-embed .game-help { display: none; }
 body.game-embed .game-hud {
-    gap: 10px 14px;
+    flex: 0 0 auto;
+    gap: 8px 14px;
     margin-bottom: 6px;
     padding: 6px 10px;
     font-size: 0.68rem;
+}
+body.game-embed .game-stage {
+    flex: 1 1 auto;
+    min-height: 0;        /* allow the stage to shrink inside the flex column */
+    aspect-ratio: auto;   /* the 4:3 now lives in the canvas bitmap, not the box */
+    max-width: none;
+}
+body.game-embed #game-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;  /* letterbox the full field — paddle never clipped */
 }
 /* The AI/SOUND toggles are inert in a spectator tile; keep the HUD compact. */
 body.game-embed .game-panel { padding: 16px 20px; }
