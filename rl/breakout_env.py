@@ -34,8 +34,33 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
 
     metadata = {"render_modes": []}
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        paddle_hit_reward: float = 0.0,
+        stall_paddle_hits: int = 0,
+        stall_penalty: float = 0.0,
+        curriculum_clear_max: float = 0.0,
+        curriculum_prob: float = 1.0,
+    ) -> None:
         super().__init__()
+        if not math.isfinite(paddle_hit_reward) or paddle_hit_reward < 0:
+            raise ValueError("paddle_hit_reward must be a finite non-negative number")
+        if stall_paddle_hits < 0:
+            raise ValueError("stall_paddle_hits must be non-negative")
+        if not math.isfinite(stall_penalty) or stall_penalty < 0:
+            raise ValueError("stall_penalty must be a finite non-negative number")
+        if bool(stall_paddle_hits) != bool(stall_penalty):
+            raise ValueError("stall_paddle_hits and stall_penalty must both be enabled or disabled")
+        if not math.isfinite(curriculum_clear_max) or not 0.0 <= curriculum_clear_max < 1.0:
+            raise ValueError("curriculum_clear_max must be in [0, 1)")
+        if not math.isfinite(curriculum_prob) or not 0.0 <= curriculum_prob <= 1.0:
+            raise ValueError("curriculum_prob must be in [0, 1]")
+        self.paddle_hit_reward = float(paddle_hit_reward)
+        self.stall_paddle_hits = int(stall_paddle_hits)
+        self.stall_penalty = float(stall_penalty)
+        self.curriculum_clear_max = float(curriculum_clear_max)
+        self.curriculum_prob = float(curriculum_prob)
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
             low=-1.0,
@@ -50,6 +75,9 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         self.speed = BALL_BASE_SPEED
         self.pierce_remaining = 0.0
         self.score = 0
+        self.episode_paddle_hits = 0
+        self.paddle_hits_without_brick = 0
+        self.episode_stall_penalties = 0
         self.lives = START_LIVES
         self.elapsed_steps = 0
         self._episode_done = False
@@ -101,12 +129,47 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         self.speed = BALL_BASE_SPEED
         self.pierce_remaining = 0.0
         self.score = 0
+        self.episode_paddle_hits = 0
+        self.paddle_hits_without_brick = 0
+        self.episode_stall_penalties = 0
         self.lives = START_LIVES
         self.elapsed_steps = 0
         self._episode_done = False
         self._build_bricks()
+        self._apply_curriculum()
         self._launch_ball()
         return build_observation(self.state_dict()), self._info()
+
+    def _apply_curriculum(self) -> None:
+        """Randomly pre-clear part of the board so training sees mid/late-game states.
+
+        A no-op unless ``curriculum_clear_max`` is set. Clears a uniform-random fraction in
+        ``[0, curriculum_clear_max)`` of the bricks and advances the ball speed to match the
+        number removed, so a partially-cleared board is a faithful fast-ball state rather than
+        a slow full board with holes. Never clears the whole board (at least one brick remains).
+        Deterministic under a seeded ``reset`` because it draws from ``self.np_random``.
+
+        ``curriculum_prob`` mixes in full-board openings: with probability ``1 - curriculum_prob``
+        the reset is left untouched, so the agent keeps practising the real slow-ball opening
+        (which greedy eval always measures) instead of only mid-game states. ``1.0`` (default)
+        applies the curriculum every episode and takes no extra draw, preserving prior behaviour.
+        """
+        if self.curriculum_clear_max <= 0.0:
+            return
+        if self.curriculum_prob < 1.0 and float(self.np_random.random()) >= self.curriculum_prob:
+            return
+        fraction = float(self.np_random.random()) * self.curriculum_clear_max
+        clear_count = int(fraction * len(self.bricks))
+        clear_count = max(0, min(clear_count, len(self.bricks) - 1))
+        if clear_count == 0:
+            return
+        indices = self.np_random.choice(len(self.bricks), size=clear_count, replace=False)
+        for index in indices:
+            brick = self.bricks[int(index)]
+            brick["hits"] = 0
+            brick["alive"] = False
+        self.bricks_alive -= clear_count
+        self.speed = min(BALL_BASE_SPEED + clear_count * SPEED_PER_BRICK, MAX_SPEED)
 
     def state_dict(self) -> dict[str, object]:
         """Return the plain-data state contract shared with the browser bridge."""
@@ -144,13 +207,25 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         self.pierce_remaining = float(state["pierce"])
         self.bricks_alive = sum(bool(brick["alive"]) for brick in self.bricks)
 
-    def _info(self, *, life_lost: bool = False, level_clear: bool = False) -> dict[str, Any]:
+    def _info(
+        self,
+        *,
+        life_lost: bool = False,
+        level_clear: bool = False,
+        paddle_hits: int = 0,
+        stall_penalties: int = 0,
+    ) -> dict[str, Any]:
         return {
             "score": self.score,
             "lives": self.lives,
             "bricks_alive": self.bricks_alive,
             "life_lost": life_lost,
             "level_clear": level_clear,
+            "paddle_hits": paddle_hits,
+            "episode_paddle_hits": self.episode_paddle_hits,
+            "paddle_hits_without_brick": self.paddle_hits_without_brick,
+            "stall_penalties": stall_penalties,
+            "episode_stall_penalties": self.episode_stall_penalties,
             "state": self.state_dict(),
         }
 
@@ -172,8 +247,9 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         half_width = self.paddle["w"] / 2.0
         self.paddle["x"] = max(half_width, min(self.paddle["x"], W - half_width))
 
-    def _physics_step(self, action: int, dt: float) -> tuple[int, bool, bool]:
+    def _physics_step(self, action: int, dt: float) -> tuple[int, int, bool, bool]:
         scored = 0
+        paddle_hits = 0
         self._move_paddle(action, dt)
         self.pierce_remaining = max(0.0, self.pierce_remaining - dt)
 
@@ -217,6 +293,7 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
                 ball["vx"] = math.sin(angle) * self.speed
                 ball["vy"] = -math.cos(angle) * self.speed
                 self.enforce_bounce(ball)
+                paddle_hits += 1
 
             for brick in self.bricks:
                 if not brick["alive"]:
@@ -280,14 +357,14 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
                     self.enforce_bounce(ball)
 
                 if not brick["alive"] and self.bricks_alive == 0:
-                    return scored, False, True
+                    return scored, paddle_hits, False, True
                 break
 
         self.balls = [ball for ball in self.balls if not ball.get("dead", False)] + spawned
         if not self.balls:
             self.lives -= 1
-            return scored, True, False
-        return scored, False, False
+            return scored, paddle_hits, True, False
+        return scored, paddle_hits, False, False
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
         if self._episode_done:
@@ -296,11 +373,24 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
             raise ValueError(f"invalid action: {action}")
 
         reward = 0.0
+        paddle_hits = 0
+        stall_penalties = 0
         life_lost = False
         level_clear = False
         for _ in range(DECISION_SUBSTEPS):
-            scored, life_lost, level_clear = self._physics_step(int(action), PHYSICS_STEP)
-            reward += scored / 100.0
+            scored, substep_paddle_hits, life_lost, level_clear = self._physics_step(
+                int(action), PHYSICS_STEP
+            )
+            paddle_hits += substep_paddle_hits
+            reward += scored / 100.0 + substep_paddle_hits * self.paddle_hit_reward
+            if scored:
+                self.paddle_hits_without_brick = 0
+            elif substep_paddle_hits and self.stall_paddle_hits:
+                self.paddle_hits_without_brick += substep_paddle_hits
+                while self.paddle_hits_without_brick >= self.stall_paddle_hits:
+                    reward -= self.stall_penalty
+                    stall_penalties += 1
+                    self.paddle_hits_without_brick -= self.stall_paddle_hits
             if life_lost or level_clear:
                 break
 
@@ -308,11 +398,16 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
             reward -= 5.0
         if level_clear:
             reward += 5.0
+        self.episode_paddle_hits += paddle_hits
+        self.episode_stall_penalties += stall_penalties
         self.elapsed_steps += 1
         terminated = life_lost or level_clear
         truncated = not terminated and self.elapsed_steps >= MAX_EPISODE_STEPS
         self._episode_done = terminated or truncated
         observation = build_observation(self.state_dict())
         return observation, reward, terminated, truncated, self._info(
-            life_lost=life_lost, level_clear=level_clear
+            life_lost=life_lost,
+            level_clear=level_clear,
+            paddle_hits=paddle_hits,
+            stall_penalties=stall_penalties,
         )

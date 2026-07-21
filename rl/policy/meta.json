@@ -1,5 +1,5 @@
 {
   "observation_version": "level1-v1",
-  "training_steps": 1730000,
-  "eval_score": 884.0
+  "training_steps": 3050000,
+  "eval_score": 683.4
 }

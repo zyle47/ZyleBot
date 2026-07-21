@@ -138,6 +138,129 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
   checkpoint metadata/LR round-trip/run-directory coverage; a real CPU fork smoke from the 5k
   checkpoint verified `3e-5`, two-episode re-baselining, isolated log/checkpoints, and one added step.
 
+- **RL reward shaping and stability controls are implemented (new, uncommitted).** The training
+  environment accepts a configurable learning-only paddle-contact bonus (`--paddle-hit-reward`;
+  optional, not part of the current stability-first recommendation) and counts each real descending-ball collision exactly once.
+  It never changes browser/game score, and greedy checkpoint evaluation remains unshaped raw score.
+  The DQN now supports global gradient clipping (`--gradient-clip-norm`; fresh-run default `10`) and
+  records it in checkpoints; pre-feature checkpoints resume unclipped unless explicitly opted in.
+  Paddle reward is also checkpointed and changing it on an ordinary resume is rejected—use
+  `--fork-run` so reward semantics cannot mix inside one CSV. RL suite coverage includes
+  exact-once shaping, unchanged raw score/legacy reward, clipping invocation, and old-checkpoint
+  compatibility. A real one-step CPU fork from the old 5k checkpoint also verified the full CLI and
+  persisted `paddle_hit_reward=0.05`, `gradient_clip_norm=10`, `learning_rate=3e-5`, and eval metadata.
+
+- **Optional overnight plateau adaptation is implemented (new, uncommitted).**
+  `rl.train --adaptive-patience-steps N` watches greedy raw-score improvements; after `N` steps
+  without a new best it halves Adam LR (floor `1e-5`) and reheats epsilon to `0.15` for 100k steps,
+  linearly cooling to the normal `0.05`. A new best resets the clock; adjustments also reset it and
+  are capped at three. Reward shaping never auto-changes, avoiding a safe-bouncing objective. The
+  patience clock, adjustment count, LR, and exploration pulse are checkpoint-safe, while each event
+  is recorded separately in `adaptive.csv`. Default behavior remains disabled/unchanged; adaptation
+  is no longer recommended until an anchored 500k validation branch proves stable. A real
+  one-step CPU fork with patience 1 triggered the controller end to end (`3e-5 -> 1.5e-5`, epsilon
+  pulse through step 105001), persisted the state, and wrote the expected `adaptive.csv` event.
+
+- **Fine-tuning replay warmup is corrected (new, uncommitted).** Fresh training still uses the
+  required 10k fully random warmup, but any resumed checkpoint now refills its new replay buffer
+  using the loaded policy's epsilon-greedy actions. Previously every fork collected 10k random-policy
+  transitions before updating the champion, a likely cause of the repeatable post-fork collapse.
+  `--reset-optimizer` optionally discards inherited Adam moments after applying any requested LR.
+  The older 5M shaped/adaptive experiment is not the current recommendation because it collapsed.
+
+- **Anti-stall reward shaping is implemented (new, uncommitted).** Optional
+  `--stall-paddle-hits 10 --stall-penalty 0.1` works with the recommended `0.01` contact bonus:
+  contacts 1–9 earn the bonus, contact 10 subtracts `0.1`, so a ten-return no-brick block nets zero.
+  Each brick hit resets the counter; continued stalling is penalized once per non-overlapping block
+  of ten. Counts and penalty events are exposed in env `info`, configuration is checkpointed, and
+  changing it on a non-fork resume is rejected. Greedy evaluation remains raw score and unshaped.
+  The stronger `0.15` penalty is deliberately reserved for a later fork after evidence the agent has
+  learned the neutral rule.
+
+- **RL champion gating and anchored fine-tuning are implemented (new, uncommitted).** The completed
+  5M shaped run's apparent `870/10` winner was selection noise: two independent paired 50-game audits
+  put the original champion at `659.8`/`656.8` versus the nominee's `326.8`/`403.8`. That original
+  step-1.73M policy was restored before conservative fine-tuning. Run `20260720-125627` subsequently
+  produced the current deployed step-3.05M champion: its 200-game promotion gate scored `730.65`
+  versus `635.95` (+94.7, lower95 +23.8), and a separate fresh paired 200-game audit scored `695.3`
+  versus the original's `618.15`. The deployed `rl/policy/meta.json` records step 3.05M with a
+  standalone greedy `eval_score` of `683.4` — the `730.65`/`695.3` figures above are 200-game *paired*
+  audit means against the prior incumbent, a stricter/different measurement than the single-policy eval.
+  Quick 10-game evals only nominate candidates; every gate attempt is written to `gates.csv`, and
+  only accepted champions replace `best.pt`/live export.
+  Fine-tuning can reserve 50k frozen-champion transitions (`--anchor-steps 50000`) and draw 25% of
+  each batch from that protected slice (`--anchor-fraction 0.25`), while `--learn-every 4` reduces
+  destructive update pressure and speeds collection. README now recommends an unshaped, LR `1e-5`,
+  500k validation fork before any long run. A real 400-step CPU fork verified robust baseline
+  creation, anchored/every-fourth learning, persisted metadata, and rejection of a lucky but
+  statistically invalid candidate.
+
+- **Champion gates now preserve and fully confirm promising nominees (new, uncommitted).** Every
+  positive 50-game paired result automatically expands to 200 games on disjoint continuation seeds,
+  even if the initial 50-game confidence bound already appears promotable. Only the final 200-game
+  paired confidence decision can promote it; a still-positive rejection is archived as
+  `nominees/step-<N>.pt` and marked in `gates.csv` instead of disappearing. This closes the early-pass
+  winner's-curse gap exposed by the step-2.87M checkpoint. The maximum is configurable/checkpointed
+  via `--champion-max-eval-episodes` (recommended `200`).
+
+- **Prioritized replay + n-step returns are implemented (new, uncommitted).** Replay buffers now use
+  an efficient proportional sum tree (online and protected-champion partitions remain separate),
+  sample by TD-error priority with configurable `--priority-alpha` (recommended validation value
+  `0.6`), and apply importance-weighted per-item Huber loss with beta annealed from `0.4` to `1.0` on
+  a checkpointed fine-tuning-local counter. `--n-step 3` accumulates discounted rewards, flushes every
+  terminal tail without leaking across episodes, and stores the exact bootstrap discount. These work
+  with the 25% champion anchor and every-fourth update path. Gate nominations are skipped during the
+  frozen-anchor warmup. All **21 RL tests pass**; real 1k-step CPU and CUDA forks exercised anchor
+  collection, three-step insertion, prioritized sampling/updates, weighted learning, metadata, and
+  gate handling. The CUDA path sustained ~620 steps/s in the smoke and persisted 176 local PER-beta
+  updates without touching the deployed policy.
+
+- **1.0M-step anchored validation fork is complete — champion held (`20260720-195555`).** Forked from
+  the deployed 3.05M champion with the README stability-first recipe (unshaped, LR `1e-5`,
+  `--reset-optimizer --learn-every 4 --anchor-steps 50000 --anchor-fraction 0.25 --n-step 3
+  --priority-alpha 0.6`) and run to step 4.05M — 1.0M trained steps, 2× the 500k target — before Nemanja
+  stopped it. Result: **47 gate attempts, zero promotions.** The single `accepted=True` row in
+  `gates.csv` is attempt 0 (the fork re-establishing the 3.05M policy as its own incumbent baseline,
+  `mean_difference=0`, incumbent==candidate==`683.4` — matching the deployed `meta.json`). Two candidates
+  actually *won* their full 200-game paired audit on the mean (`step-3390000` +34.4, `step-4010000` +28.1)
+  but both failed the +10 lower-95 promotion bar (lower-95 `-37.1`/`-41.3`), so they were rejected and
+  archived under `nominees/` rather than promoted. `best.pt` was never overwritten (mtime = fork start)
+  and the deployed `rl/policy/*` is untouched — the browser showcase still serves the 3.05M champion.
+  Decisive live evidence that the winner's-curse gate holds the line and that the conservative recipe
+  found no statistically real improvement over 3.05M. (`gates.csv` columns:
+  `steps,attempt,quick_score,candidate_mean,incumbent_mean,mean_difference,lower_95,episodes,accepted,archived`.
+  Note `eval_score_mean` in `log.csv` is the run's own greedy diagnostic, swings ~430–990, and is *not*
+  the promotion signal — only paired `gates.csv` decisions are.)
+
+- **Level-1 plateau-breaking levers are implemented and tested (new, uncommitted).** To push past the
+  stuck ~683/≈20-brick single-life ceiling, four opt-in flags change the *learning problem* (diagnosed
+  root causes: replay coverage collapse, a ~3 s credit horizon, exhausted exploration).
+  `rl/breakout_env.py` gains **training-only** `--curriculum-clear-max F` (at each reset pre-clear a
+  uniform-random fraction `< F` of the wall and advance ball speed to match, so the buffer holds
+  fast-ball endgame states) and `--curriculum-prob P` (apply that pre-clear on only fraction `P` of
+  resets; the rest stay full-board openings). `rl/dqn/agent.py` makes `--gamma` (discount/horizon) and
+  `--epsilon-decay-steps` (exploration schedule) instance attributes, checkpointed with legacy defaults
+  (`0.99` / `150k`). Eval always uses a plain full-board `BreakoutEnv()`, so `eval_score_mean` stays
+  comparable. All follow the semantic-flag pattern (validate → resolve → resume-guard → checkpoint →
+  load): **curriculum-clear-max, curriculum-prob, and gamma are fork-required** to change on resume;
+  epsilon-decay is a free forward-only override. New `rl/audit.py` runs a standalone paired A/B between
+  two checkpoints on identical seeds (reuses `evaluate_episodes` + `paired_gate_decision`) and prints a
+  PROMOTE/KEEP verdict on the same `+10` lower-95 bar. **38 RL tests pass** (was 21); CPU smokes gave
+  finite loss and checkpoints carrying all four fields; audit.py ran clean.
+  - **Expensive lesson — curriculum must MIX, not replace.** `--curriculum-prob 1.0` (clear *every*
+    reset) leaves only ~4% full-board episodes, starving the slow opening that eval measures. Two live
+    CUDA runs proved it: (1) a **fresh** run (`20260720-223715`, clear-max 0.6, prob 1.0, gamma 0.997)
+    never learned — `eval` flat ~30–80 and `train_return` flat −4.4 through 400k steps; (2) a **fork** of
+    the 3.05M champion (`20260721-003906`, clear-max 0.4, prob 1.0, gamma 0.99, anchor 50k/25%) *forgot*
+    the opening — paired gate audits sat at ~390–434 vs the champion's ~700 and never recovered. Both
+    killed. `--curriculum-prob ~0.5` (default stays `1.0` for back-compat) is the corrective and is now
+    the recommended value everywhere. Also note two fine-tunes of the champion have now failed to beat
+    683 (the earlier plain 1M null run + this curriculum fork), so its basin is sticky — a mix-fork is
+    the next test and a fresh mix run the fallback.
+  - README documents both recommended commands (fresh 1M mix run; mix-fork of the champion). Nothing
+    auto-exports (no `--live-export` on experiments), so the 3.05M champion stays the live policy;
+    **Nemanja runs training and A/B-audits `best.pt` vs `rl\runs\20260720-125627\best.pt` before any deploy.**
+
 - **AI Spectator Arena is implemented and verified (new, uncommitted).** Built to
   `briefs/rl-breakout-spectator-arena.md`. `/game/arena` runs 1/2/4/6 independent spectator games
   (default 4, hard cap 6) as same-origin iframes of the new board-only `/game?embed=1&ai=1&spectator=1&slot=N`,

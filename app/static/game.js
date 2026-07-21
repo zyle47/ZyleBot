@@ -295,12 +295,13 @@
 
     function scheduleSpectatorRestart() {
         if (!spectator.active || spectator.restartTimer !== null) return;
-        // Show the panel briefly, then loop level 1 — only while the AI is still
-        // online (offline stops the loop; we never auto-reconnect).
+        // Hold on the GAME OVER / LEVEL CLEAR panel so the result is visible,
+        // then loop level 1 — only while the AI is still online (offline stops
+        // the loop; we never auto-reconnect).
         spectator.restartTimer = setTimeout(() => {
             spectator.restartTimer = null;
             if (spectator.active && ai.enabled) startGame(1);
-        }, 1500);
+        }, 5000);
     }
 
     function cancelSpectatorRestart() {
