@@ -1,0 +1,323 @@
+/* Live Evolution viewer — loaded only by game_evolution.html, on top of
+   pages.css + game.css + game-arena.css. Reuses the arena tile styles and the
+   :root theme vars from style.css; no new palette. */
+
+.evo-shell {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 20px 20px 48px;
+    font-family: var(--font-mono);
+    color: var(--fg);
+}
+
+.evo-run { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; }
+
+/* --- HUD stat row ----------------------------------------------------------- */
+
+.evo-hud {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.evo-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background:
+        linear-gradient(145deg, rgba(235, 255, 248, 0.06), transparent 40%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
+    backdrop-filter: blur(14px) saturate(130%);
+}
+.evo-label { font-size: 0.62rem; letter-spacing: 0.14em; color: var(--muted); }
+.evo-value {
+    font-size: 1.3rem;
+    letter-spacing: 0.04em;
+    color: var(--green-bright);
+    text-shadow: var(--shadow-green);
+}
+.evo-stat--hero { grid-column: span 1; }
+.evo-stat--hero .evo-value { font-size: 1.7rem; color: var(--pink); text-shadow: var(--shadow-pink, 0 0 12px rgba(255, 110, 199, 0.5)); }
+
+/* --- Chart ------------------------------------------------------------------ */
+
+.evo-chart-wrap {
+    position: relative;
+    margin-bottom: 18px;
+    padding: 14px 16px 10px;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background:
+        radial-gradient(120% 140% at 50% 0%, rgba(77, 225, 255, 0.06), transparent 60%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(16px) saturate(135%);
+    backdrop-filter: blur(16px) saturate(135%);
+}
+.evo-chart { display: block; width: 100%; height: auto; }
+.evo-legend {
+    display: flex;
+    gap: 18px;
+    justify-content: flex-end;
+    padding-top: 6px;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+}
+.evo-legend-item { position: relative; padding-left: 20px; }
+.evo-legend-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 14px;
+    height: 0;
+    border-top-width: 3px;
+    border-top-style: solid;
+    transform: translateY(-50%);
+}
+.evo-legend-best::before { border-top-color: #4de1ff; }
+.evo-legend-mean::before { border-top-color: #8b93ff; }
+.evo-legend-line::before { border-top-color: #ffc15e; border-top-style: dashed; }
+
+/* --- Tiles (fitness badge on top of arena tile styling) --------------------- */
+
+.evo-fitness {
+    margin-left: auto;
+    margin-right: 10px;
+    color: var(--amber);
+    letter-spacing: 0.08em;
+    font-size: 0.74rem;
+}
+.evo-tile[data-slot="1"] { outline: 1px solid var(--border-hot); }
+
+.evo-hint {
+    margin: 0;
+    font-size: 0.72rem;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+}
+.evo-hint code {
+    color: var(--green-bright);
+    background: rgba(103, 255, 183, 0.08);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+/* --- Audited champion history --------------------------------------------- */
+
+.evo-history {
+    margin-top: 32px;
+    padding-top: 28px;
+    border-top: 1px solid rgba(103, 255, 183, 0.18);
+}
+.evo-history-header {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 28px;
+    margin-bottom: 14px;
+}
+.evo-history-header h2 {
+    margin: 5px 0 0;
+    color: var(--fg);
+    font-size: clamp(1.35rem, 3vw, 2.1rem);
+    letter-spacing: 0.08em;
+}
+.evo-history-header p {
+    max-width: 590px;
+    margin: 0 0 3px;
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.6;
+    text-align: right;
+}
+.evo-history-header p strong {
+    display: block;
+    color: var(--green-bright);
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+}
+.evo-history-kicker {
+    color: var(--green-bright);
+    font-size: 0.66rem;
+    letter-spacing: 0.17em;
+}
+.evo-history-chart-wrap {
+    position: relative;
+    padding: 12px 16px 4px;
+    overflow: hidden;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background:
+        radial-gradient(100% 150% at 80% 0%, rgba(103, 255, 183, 0.075), transparent 58%),
+        radial-gradient(100% 150% at 10% 0%, rgba(139, 147, 255, 0.08), transparent 58%),
+        var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+    -webkit-backdrop-filter: blur(16px) saturate(135%);
+    backdrop-filter: blur(16px) saturate(135%);
+}
+.evo-history-chart { min-width: 900px; }
+.evo-history-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px 20px;
+    padding: 8px 4px 0;
+    color: var(--muted);
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+}
+.evo-history-legend-item {
+    position: relative;
+    padding-left: 16px;
+}
+.evo-history-legend-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 8px currentColor;
+    transform: translateY(-50%);
+}
+.evo-history-legend-training { color: #8b93ff; }
+.evo-history-legend-validation { color: #4de1ff; }
+.evo-history-legend-champion { color: #67ffb7; }
+.evo-history-legend-champion::before { border-radius: 1px; transform: translateY(-50%) rotate(45deg); }
+.evo-milestones {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+}
+.evo-milestone {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 5px 12px;
+    padding: 15px 16px;
+    overflow: hidden;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background: linear-gradient(140deg, rgba(77, 225, 255, 0.055), transparent 52%), var(--glass);
+    box-shadow: var(--glass-shadow-soft);
+}
+.evo-milestone::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 2px;
+    background: linear-gradient(90deg, #8b93ff, #4de1ff, #67ffb7);
+    opacity: 0.6;
+}
+.evo-milestone-topline {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: space-between;
+    color: var(--muted);
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+}
+.evo-milestone-index { color: var(--pink); }
+.evo-milestone strong {
+    align-self: end;
+    color: var(--fg);
+    font-size: 0.9rem;
+    letter-spacing: 0.08em;
+}
+.evo-milestone-score {
+    grid-row: span 2;
+    color: var(--green-bright);
+    font-size: 1.45rem;
+    text-shadow: var(--shadow-green);
+}
+.evo-milestone-gain {
+    width: max-content;
+    padding: 2px 6px;
+    border-radius: 99px;
+    background: rgba(103, 255, 183, 0.09);
+    color: var(--green-bright);
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+}
+.evo-milestone-detail {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 0.69rem;
+}
+.evo-milestone code {
+    grid-column: 1 / -1;
+    color: rgba(160, 180, 210, 0.72);
+    font-size: 0.63rem;
+}
+.evo-history-ledger {
+    margin-top: 12px;
+    border: 1px solid var(--glass-stroke);
+    border-radius: var(--radius-md);
+    background: rgba(6, 12, 22, 0.34);
+}
+.evo-history-ledger summary {
+    padding: 12px 15px;
+    cursor: pointer;
+    color: var(--green-bright);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    user-select: none;
+}
+.evo-history-ledger ol {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    margin: 0;
+    padding: 1px;
+    list-style: none;
+    background: rgba(120, 150, 200, 0.1);
+}
+.evo-history-ledger li {
+    display: grid;
+    grid-template-columns: 28px minmax(105px, 0.7fr) 74px 1fr;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+    padding: 8px 10px;
+    background: rgba(7, 13, 22, 0.92);
+    font-size: 0.64rem;
+}
+.evo-history-ledger li > span { color: var(--muted); }
+.evo-history-ledger li > strong { color: var(--fg); }
+.evo-history-ledger li > b { color: #4de1ff; font-size: 0.78rem; }
+.evo-history-ledger li > small { color: var(--muted); }
+.evo-history-ledger li > code {
+    grid-column: 2 / -1;
+    color: rgba(160, 180, 210, 0.58);
+    overflow-wrap: anywhere;
+}
+.evo-history-ledger li[data-kind="training"] > b { color: #8b93ff; }
+.evo-history-ledger li[data-kind="champion"] > b { color: #67ffb7; text-shadow: var(--shadow-green); }
+
+/* --- Responsive ------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+    .evo-hud { grid-template-columns: repeat(3, 1fr); }
+    .evo-history-chart-wrap { overflow-x: auto; }
+    .evo-milestones { grid-template-columns: 1fr; }
+    .evo-history-ledger ol { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+    .evo-hud { grid-template-columns: repeat(2, 1fr); }
+    .evo-value { font-size: 1.1rem; }
+    .evo-stat--hero .evo-value { font-size: 1.4rem; }
+    .evo-history-header { display: block; }
+    .evo-history-header p { margin-top: 10px; text-align: left; }
+}

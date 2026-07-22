@@ -14,7 +14,12 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+
+# RL run/checkpoint output and live evolution viewer snapshots. The promoted
+# policy in rl/policy/ is deliberately versioned; these transient outputs are not.
 rl/runs/
+rl/runs_evo/
+rl/policy_evo/
 
 # Editor / OS cruft
 .vscode/

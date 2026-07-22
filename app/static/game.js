@@ -262,6 +262,9 @@
         return Number.isFinite(n) ? Math.max(1, Math.min(n, 6)) : 1;
     };
     const aiRequested = params.get("ai") === "1";
+    // Evolution mode reuses every spectator rule; only the action source differs:
+    // the board plays an evolved genome slot (0-based) instead of the champion.
+    const evoMode = aiRequested && params.get("spectator") === "1" && params.get("evo") === "1";
     const spectator = {
         active: aiRequested && params.get("spectator") === "1",
         slot: clampSlot(params.get("slot")),
@@ -534,7 +537,10 @@
         hud.aiBadge.hidden = true;
         updateAiControl();
         const scheme = location.protocol === "https:" ? "wss" : "ws";
-        const socket = new WebSocket(`${scheme}://${location.host}/ws/game-agent`);
+        const wsPath = evoMode
+            ? `/ws/game-agent-evo?slot=${spectator.slot - 1}`
+            : "/ws/game-agent";
+        const socket = new WebSocket(`${scheme}://${location.host}${wsPath}`);
         ai.socket = socket;
         socket.addEventListener("open", () => {
             if (spectator.active) {

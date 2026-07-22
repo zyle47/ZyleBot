@@ -1,0 +1,32 @@
+[
+  {
+    "label": "DQN DEPLOYED",
+    "score": 683.4,
+    "date": "20 JUL 2026",
+    "detail": "3.05M-step DQN champion",
+    "run": "20260720-125627",
+    "phase": "DQN",
+    "measure": "Deployed standalone evaluation",
+    "sort_key": "20260720-153902"
+  },
+  {
+    "label": "EVOLUTION AUDIT",
+    "score": 1128.8,
+    "date": "21 JUL 2026",
+    "detail": "First promoted neuroevolution champion",
+    "run": "20260721-025154",
+    "phase": "EVOLUTION",
+    "measure": "Promoted 200-game audit mean",
+    "sort_key": "20260721-060804"
+  },
+  {
+    "label": "CURRICULUM AUDIT",
+    "score": 1586.45,
+    "date": "21 JUL 2026",
+    "detail": "Late-game curriculum evolution champion",
+    "run": "20260721-180231",
+    "phase": "CURRICULUM EVO",
+    "measure": "Promoted 200-game audit mean",
+    "sort_key": "20260721-220924"
+  }
+]

@@ -2,7 +2,7 @@
 
 > Living *current-state* doc — what exists, what's in flight, and the gotchas that save debugging
 > time. **The main (orchestrator) model updates this file every time work lands** — subagents
-> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-20**.
+> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-22**.
 >
 > Companions: `CLAUDE.md` (shared project rules + Claude agent routing), `README.md` (user-facing setup/tools),
 > `.codex/config.toml` + `.codex/agents/` (project-scoped Codex configuration and specialist roles).
@@ -56,7 +56,7 @@ forks the ball into three; a life is lost only when the LAST live ball drains, t
 
 Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Belgrade" triggers tools — or dispatch the `verifier` agent.
 
-## Status (2026-07-19)
+## Status (2026-07-22)
 
 - **Isolated live Style Lab is implemented and tested (new, uncommitted).** `/style-lab` is linked from the footer (opens in a new tab) and renders a fixed component canvas inside an iframe. `style-lab.js` fetches `style-lab.css` with no-store polling every second and injects it as text into the iframe, so editable CSS cannot reach the lab shell, chat, or approval UI. `update_style_lab_css` is a new `SCOPED_WRITE` tool with no path argument; it atomically replaces only the fixed lab file after enforcing a 128 KiB cap, basic structural balance, no nulls/HTML style tags/external `@import`, `url()`, or protocol strings, and file-link/path checks. `reset_style_lab_css` restores `style-lab.default.css`, which the scoped writer cannot modify. Local models may still select generic `write_file`; an exact lab-file call now bypasses confirmation and delegates inside `write_file` to the same scoped validator, while every other path remains confirmation-required. Tests cover update/reset, schema/risk tier, invalid/external/oversize content, link refusal, generic-writer delegation, and confirmation isolation; full suite passes (16 tests, 2 link cases skipped without Windows symlink privilege). Real HTTP checks confirmed page/frame/script/footer wiring, no-cache CSS serving, and a live write→protected-reset cycle. Browser visual QA was unavailable because no in-app/Chrome browser was connected in this session.
 
@@ -294,6 +294,193 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
     avg <1 ms, peak 2.27 ms round-trip, `/status` max 12.8 ms, no disconnects, all actions in 0|1|2).
     **Browser/visual QA (iframe grid render, real pop-out windows, spectator loop visuals) is still
     for Nemanja** — no in-app browser was connected this session.
+
+- **Champion-seeded neuroevolution — Phase 1 engine implemented and tested (new, uncommitted).** A
+  torch-free genetic algorithm in `rl/evo/` that treats the DQN's MLP weights as a genome and optimizes
+  the *real* game score directly (no gradients, no reward shaping) — a second attack on the sticky ~683
+  plateau, and the basis of a "Code Bullet"-style live-evolution viewer (Phase 2, not yet built).
+  `genome.py` codecs the six weight arrays to/from a flat float32 vector in the *exact* `rl.export_policy`
+  order and runs the same numpy ReLU forward pass as `app/rl_policy.py` — a unit test asserts bit-for-bit
+  parity, so what evolves is bit-for-bit what the arena plays. `evaluate.py` scores a genome as mean raw
+  score over a fixed seed set using the plain headless `BreakoutEnv` (single-life, no curriculum/shaping —
+  identical to greedy eval), parallel across CPU cores via `multiprocessing` (Windows spawn verified,
+  serial and parallel give identical fitnesses). `population.py` is a classic GA: champion-seeded gen-0
+  (index 0 is the unmutated champion), elitism, tournament selection, uniform crossover, annealing-sigma
+  Gaussian mutation. `evolve.py` (CLI `python -m rl.evo.evolve`) runs generations on per-gen *training*
+  seeds (fair, decorrelated) but scores each generation's best on a **fixed validation seed set** so the
+  all-time-best curve is trustworthy, not seed-luck; logs `evo_log.csv`, saves `best.npy` on validation
+  improvement, and ends with a paired audit of the best genome vs the champion on the **same +10 lower-95
+  bar** as every DQN champion (reuses `rl.train.paired_gate_decision`). **The deployed champion in
+  `rl/policy/` is never touched** — `--live-export` publishes only to a separate `rl/policy_evo/` slot,
+  and promotion to the live game stays a manual, audited step. 14 evo unit tests pass (codec round-trip,
+  champion-load shape, forward parity, mutated-genome export round-trip, operator correctness, rollout
+  determinism); serial + parallel CLI smokes ran clean end-to-end incl. the audit. Run it (rl venv):
+  `rl\venv\Scripts\python.exe -m rl.evo.evolve --generations 100 --population 60 --eval-seeds 8 --workers 8`.
+  Rough cost: ~pop×eval-seeds rollouts/gen, embarrassingly parallel — order minutes for 100 gens on 8 cores.
+
+- **Champion-seeded neuroevolution — Phase 2 live "6-brain" viewer implemented and tested (new,
+  uncommitted).** A Code-Bullet-style browser view at **`/game/evolution`**: six boards each play a
+  *different* evolved genome (the current generation's top 6) while a live chart plots gen-best/gen-mean
+  fitness vs generation with a dashed "champion line to beat". Fully decoupled from evolution via files —
+  no shared memory, matching the existing hot-reload philosophy:
+  - **Engine side (`rl.evo.evolve --live-export`)** publishes, throttled by `--viewer-interval` (default
+    0.75s), the generation's top-6 genomes to `rl/policy_evo/slot{0..5}/breakout_policy.npz` (each an
+    ordinary atomically-published policy dir) plus `rl/policy_evo/status.json` written LAST as the
+    generation commit marker (generation, all_time_best, baseline, train_best/mean, sigma, per-slot
+    fitness, capped best/mean history for the chart). The deployed champion in `rl/policy/` is still
+    never touched. **Resilient to Windows file locks:** because the app reads slot files while the boards
+    play (and Defender / the VS Code workspace watcher scan them), `os.replace` can hit `PermissionError`
+    (WinError 5) mid-run; viewer publishing is cosmetic, so each replace retries briefly (`_try_fs`) and a
+    still-locked frame is *dropped* (`publish_viewer_state` returns False, logged as "viewer frame
+    dropped") rather than crashing the run — status.json is the commit marker, so a dropped frame just
+    keeps the viewer on the last good generation. (Tip to reduce drops: exclude `rl/policy_evo` from
+    Defender / `files.watcherExclude`.)
+  - **App side** adds torch-free `app/rl_policy_evo.py` (independent per-slot hot-reload singletons
+    reusing `rl_policy.NumpyPolicy`; never reads the champion path), `GET /api/evo/status` (plain file
+    read → status.json or `{available:false}`), and `WS /ws/game-agent-evo?slot=0..5` (mirrors the
+    champion WS but bound to one slot, re-fetching that slot's genome per message). `main.py` extracted a
+    shared `_parse_level_one_state` used by both WebSockets.
+  - **Frontend** adds `/game/evolution` route + `game_evolution.html` + `game-evolution.js` (polls
+    `/api/evo/status` every 1.5s, builds the 6-tile grid reusing arena tile styles, draws the fitness
+    chart on a `<canvas>`, per-tile fitness badges, RESYNC BOARDS) + `game-evolution.css`. `game.js` gets
+    a **single** `evoMode` branch: with `&evo=1` a spectator board connects to `/ws/game-agent-evo?slot=N-1`
+    instead of the champion WS — every other spectator rule (silent, loop, no score POST, postMessage) is
+    reused. Ordinary `/game` and the AI arena are untouched. Boards play full games and pick up the newest
+    genome at each restart, so the chart races ahead at evolution speed while games stay watchable.
+  - **Historical progress chart is now live and artifact-driven.** `GET /api/evo/history` uses
+    `app/evo_history.py` to scan DQN `log.csv`/accepted `gates.csv`, every evolution `evo_log.csv`, saved
+    audit JSON, and versioned `rl/policy/history.json`; partial rows and absent/corrupt files fail soft.
+    The bottom chart polls it every 1.5s independently of the top run status, so a new generation,
+    validation improvement, or rotation re-score appears without editing/reloading source. It currently
+    reconstructs **63 chronological stops** through the latest local `2167.8` validation high. Point
+    shape/color distinguishes DQN gates, optimistic validation records, and audited/deployed scores; the
+    champion cards and expandable full ledger also rebuild from the feed. Future `rl.evo.evolve` runs now
+    create/update `run.json` with configuration/completion metadata and persist their final `audit.json`;
+    standalone `rl.evo.audit` writes timestamped audit JSON too. New deployed scores are detected from
+    `rl/policy/meta.json`, while the three prior champion records (`683.4 → 1128.8 → 1586.45`) live in
+    `rl/policy/history.json`. `rl/policy_evo/` and all run artifacts remain ignored; deployed policy/history
+    stay deliberately versioned.
+  - **Verified:** 49 app tests pass (2 Windows-symlink skips) and all 60 RL tests pass. Coverage includes
+    dynamic history extraction (DQN gates, evolution improvements, rotation drops, accepted audits,
+    unknown future deployed policy), `/api/evo/history`, and the server-rendered polling page; JavaScript
+    syntax, Python compile, and CSS brace checks pass. Live TestClient reads **63 points**, with `2167.8`
+    as the latest saved high. **Browser/visual QA (the
+    iframe grid rendering, chart animation, boards actually playing evolved genomes) is still for
+    Nemanja** — no in-app browser this session. To watch: start `... -m rl.evo.evolve --live-export
+    --workers 8`, open `/game/evolution`, record with OBS. Phase 3 (optional in-browser ⏺ recorder) not built.
+
+- **Neuroevolution BEAT the DQN champion — audited PROMOTE, not yet deployed (new, uncommitted).** Run
+  `rl/runs_evo/20260721-025154` (champion-seeded, `--eval-seeds 24 --sigma 0.01 --sigma-min 0.003`,
+  300 gens) climbed a genuine validation staircase 675→769→825→894→1051→1264→1441 and its saved
+  `best.npy` **cleared a fresh 200-game paired audit vs the deployed 3.05M champion: evolved mean 1128.8
+  vs champion 710.0, diff +418.8, lower-95 +318.2 (bar >10) → PROMOTE** (held-out seeds base 500000,
+  distinct from the run's training/validation tags; wins 140/200 head-to-head). This is the first thing
+  to beat the ~683–710 plateau that every DQN fine-tune failed on. The key was more eval-seeds (robust
+  selection, not seed-luck) + smaller sigma (fine local search); an earlier run at 8 seeds / sigma 0.02
+  found nothing (flat 675) — the 8-seed signal was pure noise (the *champion itself* scored 482–1236
+  across different 8-seed draws). NOTE the run's `all_time_best`=1441.9 is max-selection-biased; the
+  honest audited mean is ~1129. **DEPLOYED 2026-07-21, since SUPERSEDED by the curriculum champion
+  (1586.45) — see the last bullet in this group for the currently live policy.** `best.npy` was exported to `rl/policy/`
+  (`meta.json` now `training_steps=3050000` lineage, `eval_score=1128.8`), so the live game AI + arena +
+  `/game/evolution` now serve the evolved brain (verified: NumpyPolicy loads it, weights match the genome).
+  The previous 3.05M champion (eval 683.4) is recoverable from `rl/runs/20260720-125627/best.pt` (re-export)
+  and was also backed up to scratchpad this session — rollback is a re-export.
+  - **Follow-up runs hit diminishing returns — don't re-chase without a new idea.** Two runs seeded from
+    the deployed 1129 champion failed to beat it. (1) `20260721-130409` (sigma 0.01, `--seed 0`) stalled
+    flat and *degraded* (`train_mean` 682→400): sigma 0.01 is too coarse for an already-refined genome,
+    **and reusing `--seed 0` re-validates on the exact 16 seeds the champion was selected on, so the
+    baseline was its own overfit peak (1441.9) rather than its true ~1129** — an unbeatable-by-construction
+    target. Lesson: when seeding from a previous winner, change `--seed` so validation is honest.
+    (2) `20260721-134714` (sigma 0.005, `--seed 1`, `--val-seeds 32`) was healthy — honest baseline 1078.4,
+    climbed to 1338.1 by gen 44 — but its best **failed a 200-game paired audit vs the deployed champion:
+    1213.8 vs 1128.8, diff +85.0, lower-95 −21.9 (bar >10) → KEEP CHAMPION.** A +85 mean sits inside the
+    ±107 noise margin of 200 single-life games. Stopped at gen 88. Net: 683→1129 was the real unlock;
+    further gains look noise-level for this architecture/observation.
+  - **Ops note:** `--workers 10` on the 12-core box makes the desktop unusable while running; use `--workers 6`
+    if you need the PC. Ctrl-C is safe — atomic writes clean up, no stray temps, champion untouched.
+  - **Diagnosis of the remaining gap (120-episode measurement, 2026-07-21).** Theoretical max for one life
+    is **3000** (all 60 bricks: 10×(70+70+50+50+30+30)); the deployed champion averages ~1210 and
+    **cleared the board 0/120 times**. It is *not* near a ceiling. Failure has a precise location: only
+    **1.7%** die early (<10 bricks — the opening is solid) and only **4.2%** ever reach >45 bricks, with
+    median death at **27/60 bricks**. Since ball speed is `340 + 5×bricks` (cap 640), it is competent to
+    ~475 and falls apart above it — and evolution can't select for late-game skill it samples in only 4%
+    of episodes.
+  - **Curriculum-mixed evolution implemented to attack that gap (new, uncommitted).** `rl/evo/evaluate.py`
+    takes a `curriculum=(clear_max, prob)` threaded through `rollout_score`/`genome_fitness`/
+    `evaluate_population`/`_fitness_worker` (which accepts both the 3- and 4-tuple payload for
+    back-compat), reusing `BreakoutEnv`'s existing `curriculum_clear_max`/`curriculum_prob`. `evolve.py`
+    adds `--curriculum-clear-max` (default 0, try 0.6) and `--curriculum-prob` (default **0.5** — the mix;
+    it warns at ≥0.95 because `prob 1.0` starved the opening and killed past runs). **Training fitness
+    only** — the baseline, per-generation validation, and the final audit always use a plain full board,
+    so `val_score`/`all_time_best` stay comparable across runs (`train_*` columns are NOT comparable to
+    non-curriculum runs, since pre-cleared boards have a lower max score). Curriculum draws come from the
+    env's seeded RNG, so identical seeds give identical boards to every genome — selection stays fair.
+  - **Evolution → DQN bridge implemented (new, uncommitted).** `rl/evo/to_checkpoint.py` (CLI
+    `python -m rl.evo.to_checkpoint --genome <.npy|.npz> --output <.pt>`) maps the six genome arrays onto
+    `QNetwork`'s `layers.{0,2,4}` params, loads them into both online and target nets, and writes a real
+    trainer checkpoint via `rl.train.save_checkpoint`, so gradient fine-tuning can resume exactly where
+    evolution stopped (defaults `agent_steps=3.05M` so epsilon stays annealed at 0.05 and DQN can't
+    randomly explore the brain apart). A unit test asserts the converted agent's greedy actions match the
+    numpy genome's exactly. **Verified live:** converted the deployed champion and `rl.train --resume`
+    started at step 3,050,000 and evaluated it at **1514**. Caveat to remember: evolution optimised raw
+    score, so outputs are action *preferences*, not calibrated Q-values — TD updates may re-scale them and
+    degrade behaviour, hence the LR `1e-5` + `--anchor-steps 50000 --anchor-fraction 0.25 --learn-every 4`
+    recipe; the paired gate means the worst case is wasted compute, never a lost champion.
+  - **Standalone evo audit CLI (new, uncommitted).** `rl/evo/audit.py` — the evolution counterpart to
+    `rl/audit.py` — paired-audits any genome against the deployed champion **without stopping a run**
+    (`best.npy` is already on disk): `python -m rl.evo.audit --candidate rl\runs_evo\<run>\best.npy
+    --workers 4` (defaults: 200 episodes, incumbent `rl/policy/breakout_policy.npz`, held-out seed base
+    500000, same +10 lower-95 bar). Backed by new `evaluate.score_episodes()` (parallel per-episode
+    scores for one genome) and `genome.load_genome()` (accepts `.npy` genome or `.npz` policy; also used
+    by `to_checkpoint`). **Always audit before deploying** — a run's `all_time_best` is a max over noisy
+    generations and reads high.
+  - **20 evo unit tests pass** (added curriculum wiring/determinism/payload-compat and the two
+    conversion tests); curriculum + converter + train-resume + audit-CLI smokes all ran clean.
+  - **>>> CURRENT LIVE CHAMPION: evolved+curriculum policy, audited 1586.45 (deployed 2026-07-21). <<<**
+    Run `rl/runs_evo/20260721-180231` (seeded from the 1128.8 champion; `--eval-seeds 24 --val-seeds 32
+    --sigma 0.005 --sigma-min 0.002 --seed 2 --curriculum-clear-max 0.6 --curriculum-prob 0.5`, 300 gens)
+    climbed validation 1277.5→1961.6 across 9 steps. **Two independent 200-game paired audits both said
+    PROMOTE:** seed-base 500000 → 1575.5 vs 1128.8 (+446.6, lower-95 +333.8); the run's own seed-base
+    100042 → 1586.45 vs 1179.15 (+407.30, lower-95 +293.29). Deployed to `rl/policy/`
+    (`training_steps=3050000` lineage, `eval_score=1586.45`, weights verified byte-equal to the audited
+    genome); the outgoing 1128.8 champion was backed up to scratchpad, and every prior champion remains
+    recoverable. Progression: **683 (DQN, hard-stuck) → 1128.8 (evolution) → 1586.45 (curriculum evolution)**.
+  - **Lesson — late validation gains were largely validation-overfitting.** `all_time_best` rose
+    1722.5→1961.6 over gens 151–243, but the audited truth barely moved: the gen-151 genome audited
+    **1575.5** and the final gen-243 genome audited **1586.45** (≈+11, on different seed sets). So the
+    val→audit haircut widened from ~0.91 to ~0.81 as the run kept maximising over the same 32 validation
+    seeds. **Do not treat `all_time_best` as progress late in a run** — only a paired audit on fresh seeds
+    counts, and the curriculum run's real ceiling was reached around gen 151.
+  - **Validation-seed rotation implemented to fix that (new, uncommitted).** `--val-rotate-every N`
+    (0 = off, default; try 50) redraws the holdout every N generations via
+    `validation_seeds(seed, count, rotation)` and **re-scores both the incumbent best and the baseline on
+    the fresh boards**, so every comparison stays inside one seed set and `all_time_best` cannot drift.
+    A new `val_rotation` column is appended to `evo_log.csv`. **`all_time_best` may legitimately DROP at a
+    rotation** — that is an honest re-measurement, not a bug; only compare values within a rotation block.
+  - **New champion's failure mode has MOVED (120-episode diagnostic, post-deploy).** The 1586 champion:
+    mean 1629.1, **35.2/60 bricks** (was 27.3), early deaths **0.8%** (was 1.7%), and reaches >45 bricks
+    **21.7%** of the time (was 4.2% — a 5× improvement; the mid-game problem is solved). But **still
+    0/120 full clears**, best run 56/60. The bottleneck is now the **endgame: the last ~15 bricks at ball
+    speed 565–640**. Hence the next experiment: curriculum at `--curriculum-clear-max 0.85` (start with
+    ~6–9 bricks left at near-max speed) rather than 0.6.
+  - **DQN hybrid FAILED — do not retry without recalibration (run `rl/runs/20260721-220811`).** Converted
+    the deployed 1586 champion via `rl.evo.to_checkpoint` and ran the full stability recipe (fork,
+    `--reset-optimizer --learning-rate 1e-5 --learn-every 4 --anchor-steps 50000 --anchor-fraction 0.25
+    --n-step 3 --priority-alpha 0.6`) for all 500k steps. The evolved brain entered at gate baseline
+    **1641** (eval 2008) and **collapsed as soon as learning began** at step 3.10M (after the anchor
+    warmup): eval fell to ~700 within 20k steps and ended at **634**, with `train_return` going negative
+    (−0.63). **Zero promotions** (`gates.csv` has only the fork's attempt-0 baseline); `best.pt` still
+    holds the evolved policy and `rl/policy/` was never touched (no `--live-export`). **Diagnostic tell:
+    loss fell monotonically (0.234 → 0.031) while the policy got 2.6× worse** — the net fit Q-values fine
+    for its own worsening behaviour. Root cause is structural, not a tuning problem: evolution optimises
+    raw score, so the network's outputs are action *preferences*, not calibrated Q-values, and TD-fitting
+    rescales them and destroys the argmax structure. Making this work would need a distillation /
+    policy-evaluation warmup that fits Q-values while holding the argmax fixed — a real project, and DQN
+    is now 0-for-every-attempt on this codebase. **Recommendation: put compute into evolution instead.**
+  - **`--champion` now accepts a raw `.npy` genome** (uses `genome.load_genome`), so an interrupted
+    evolution run can be continued by seeding the next run from its own `best.npy` — no deploy required.
+    When doing so, **change `--seed`**: the previous run's validation seeds are the ones that genome was
+    selected on, so reusing them gives an overfit (unbeatable) baseline.
 
 - Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys. Possible follow-up worth a deliberate decision (not yet built): narrow the ALLOW tier so `cat`/`type`/`Get-Content` (which can read arbitrary file content, not just enumerate) require confirmation even for non-protected paths — currently accepted as-is since it matches the original spec and CONFIRM was always the fallback before this feature existed.
 

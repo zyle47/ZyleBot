@@ -1,0 +1,139 @@
+{# Live neuroevolution viewer: six boards, each playing a DIFFERENT evolved genome
+   (the current generation's top 6), plus live and historical fitness charts. Boards are
+   same-origin iframes of the board-only /game?embed=1&ai=1&spectator=1&evo=1&slot=N,
+   which play an evolved genome slot instead of the deployed champion. All numbers
+   here come from the run's rl/policy_evo/status.json via /api/evo/status. #}
+{% extends "base.html" %}
+
+{% block title %}Evolution — ZyleBot{% endblock %}
+
+{% block body_class %}page game-evolution{% endblock %}
+
+{% block head_extra %}
+    <link rel="stylesheet" href="/static/pages.css">
+    <link rel="stylesheet" href="/static/game.css">
+    <link rel="stylesheet" href="/static/game-arena.css">
+    <link rel="stylesheet" href="/static/game-evolution.css">
+{% endblock %}
+
+{% block content %}
+    <div class="evo-shell" data-embed-src="/game?embed=1&amp;ai=1&amp;spectator=1&amp;evo=1" data-slots="6">
+        <header class="arena-header">
+            <div class="arena-title">
+                <a class="brand" href="/game">&lt;/ back to game</a>
+                <h1>BREAKOUT <span>// EVOLUTION</span></h1>
+            </div>
+            <div class="evo-run" aria-live="polite">
+                <span id="evo-state" class="policy-state policy-state--checking">CHECKING…</span>
+            </div>
+        </header>
+
+        <section class="evo-hud" aria-label="Evolution statistics">
+            <div class="evo-stat evo-stat--hero">
+                <span class="evo-label">GENERATION</span><span class="evo-value" id="evo-gen">—</span>
+            </div>
+            <div class="evo-stat">
+                <span class="evo-label">ALL-TIME BEST</span><span class="evo-value" id="evo-best">—</span>
+            </div>
+            <div class="evo-stat">
+                <span class="evo-label">LINE TO BEAT</span><span class="evo-value" id="evo-baseline">—</span>
+            </div>
+            <div class="evo-stat">
+                <span class="evo-label">GEN BEST</span><span class="evo-value" id="evo-trainbest">—</span>
+            </div>
+            <div class="evo-stat">
+                <span class="evo-label">GEN MEAN</span><span class="evo-value" id="evo-mean">—</span>
+            </div>
+            <div class="evo-stat">
+                <span class="evo-label">SIGMA</span><span class="evo-value" id="evo-sigma">—</span>
+            </div>
+        </section>
+
+        <section class="evo-chart-wrap" aria-label="Fitness over generations">
+            <canvas id="evo-chart" class="evo-chart" width="1280" height="360"></canvas>
+            <div class="evo-legend">
+                <span class="evo-legend-item evo-legend-best">GEN BEST</span>
+                <span class="evo-legend-item evo-legend-mean">GEN MEAN</span>
+                <span class="evo-legend-item evo-legend-line">CHAMPION</span>
+            </div>
+        </section>
+
+        <div class="arena-controls">
+            <p class="evo-hint" id="evo-hint">
+                No run detected. Start one, then this fills in live:
+                <code>rl\venv\Scripts\python.exe -m rl.evo.evolve --live-export --workers 8</code>
+            </p>
+            <div class="arena-actions">
+                <button type="button" id="evo-restart">RESYNC BOARDS</button>
+            </div>
+        </div>
+
+        <div id="evo-grid" class="arena-grid" data-count="6" aria-label="Evolving brains"></div>
+
+        <section class="evo-history" aria-labelledby="evo-history-title">
+            <header class="evo-history-header">
+                <div>
+                    <span class="evo-history-kicker">AUDITED CHAMPION LINEAGE</span>
+                    <h2 id="evo-history-title">HISTORICAL PROGRESS</h2>
+                </div>
+                <p>
+                    <strong id="evo-history-count">{{ history_snapshot.count }} RECORDED STOPS</strong>
+                    from the first DQN smoke run through every local evolution experiment.
+                </p>
+            </header>
+
+            <script id="evo-history-data" type="application/json">{{ history_snapshot | tojson }}</script>
+
+            <div class="evo-history-chart-wrap">
+                <canvas
+                    id="evo-history-chart"
+                    class="evo-chart evo-history-chart"
+                    width="1280"
+                    height="390"
+                    aria-label="Audited champion score progression"
+                >Thirty recorded training, validation, and champion score milestones from DQN to curriculum evolution.</canvas>
+            </div>
+
+            <div class="evo-history-legend" aria-label="Historical chart legend">
+                <span class="evo-history-legend-item evo-history-legend-training">DQN TRAINING / GATE</span>
+                <span class="evo-history-legend-item evo-history-legend-validation">SAVED VALIDATION HIGH</span>
+                <span class="evo-history-legend-item evo-history-legend-champion">AUDITED / DEPLOYED</span>
+            </div>
+
+            <ol class="evo-milestones" aria-label="Audited champion milestones">
+                {% for milestone in history_snapshot.champions %}
+                <li class="evo-milestone" data-score="{{ milestone.score }}" data-label="{{ milestone.label }}">
+                    <div class="evo-milestone-topline">
+                        <span class="evo-milestone-index">0{{ loop.index }}</span>
+                        <span class="evo-milestone-date">{{ milestone.date }}</span>
+                    </div>
+                    <strong>{{ milestone.label }}</strong>
+                    <span class="evo-milestone-score">{{ milestone.score }}</span>
+                    <span class="evo-milestone-gain" aria-label="Improvement from previous champion"></span>
+                    <span class="evo-milestone-detail">{{ milestone.detail }}</span>
+                    <code>run {{ milestone.run }}</code>
+                </li>
+                {% endfor %}
+            </ol>
+
+            <details class="evo-history-ledger">
+                <summary>VIEW ALL <span id="evo-history-ledger-count">{{ history_snapshot.count }}</span> RECORDED STOPS</summary>
+                <ol id="evo-history-ledger-list">
+                    {% for point in history_snapshot.points %}
+                    <li data-kind="{{ point.kind }}">
+                        <span>{{ loop.index }}</span>
+                        <strong>{{ point.label }}</strong>
+                        <b>{{ point.score }}</b>
+                        <small>{{ point.measure }}</small>
+                        <code>{{ point.source }}</code>
+                    </li>
+                    {% endfor %}
+                </ol>
+            </details>
+        </section>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="/static/game-evolution.js"></script>
+{% endblock %}

@@ -335,6 +335,26 @@ async def submit_score(req: ScoreSubmit):
     return {"entry": entry, "top": db.top_scores()}
 
 
+def _parse_level_one_state(payload: dict) -> dict:
+    """Validate an arena state message and build the numpy-policy input dict.
+
+    Shared by the champion and evolution WebSockets. Raises on malformed input;
+    both callers fall back to a safe no-op action rather than dropping the socket.
+    """
+    bricks = payload.get("bricks")
+    if not isinstance(bricks, str) or len(bricks) != 60 or not bricks.isdigit():
+        raise ValueError("invalid level-one brick string")
+    return {
+        "paddle_x": float(payload["paddle_x"]),
+        "balls": [
+            [float(value) for value in ball] for ball in payload["balls"] if len(ball) == 4
+        ],
+        "speed": float(payload["speed"]),
+        "pierce": float(payload["pierce"]),
+        "bricks": [(int(hits), 1) for hits in bricks],
+    }
+
+
 @app.get("/api/game-agent/status")
 async def game_agent_status():
     """Read-only policy status for the arena header. Never loads torch or LM
@@ -374,25 +394,73 @@ async def game_agent(websocket: WebSocket):
                 # Re-fetch each message so an atomically hot-reloaded policy takes
                 # effect mid-connection; once loaded this keeps the last good one.
                 policy = rl_policy.get_policy()
-                bricks = payload.get("bricks")
-                if (
-                    not isinstance(bricks, str)
-                    or len(bricks) != 60
-                    or not bricks.isdigit()
-                ):
-                    raise ValueError("invalid level-one brick string")
-                state = {
-                    "paddle_x": float(payload["paddle_x"]),
-                    "balls": [
-                        [float(value) for value in ball]
-                        for ball in payload["balls"]
-                        if len(ball) == 4
-                    ],
-                    "speed": float(payload["speed"]),
-                    "pierce": float(payload["pierce"]),
-                    "bricks": [(int(hits), 1) for hits in bricks],
-                }
-                action = policy.act(state)
+                action = policy.act(_parse_level_one_state(payload))
+            except (
+                PolicyUnavailableError,
+                AttributeError,
+                IndexError,
+                KeyError,
+                TypeError,
+                ValueError,
+                OverflowError,
+            ):
+                action = 0
+            await websocket.send_json({"action": action})
+    except WebSocketDisconnect:
+        return
+
+
+@app.get("/api/evo/status")
+async def evo_status():
+    """Read-only status of the live neuroevolution run for the 6-brain viewer:
+    generation, per-slot fitness, and the best/mean history the chart plots. A
+    plain file read (no torch, no LM Studio); absent run -> {available: False}."""
+    from app import rl_policy_evo
+
+    return rl_policy_evo.read_status()
+
+
+@app.get("/api/evo/history")
+async def evo_history_status():
+    """Dynamic DQN/evolution history assembled from local run artifacts."""
+    from app import evo_history
+
+    return evo_history.read_history()
+
+
+@app.websocket("/ws/game-agent-evo")
+async def game_agent_evo(websocket: WebSocket):
+    """Serve level-one actions from an evolved genome slot (?slot=0..5).
+
+    Mirrors /ws/game-agent but each connection is bound to one arena slot and
+    re-fetches that slot's policy per message, so a slot plays its newest
+    published genome as generations advance. Never touches the deployed champion.
+    """
+    await websocket.accept()
+    from app import rl_policy_evo
+
+    try:
+        slot = int(websocket.query_params.get("slot", ""))
+    except (TypeError, ValueError):
+        slot = -1
+    if not 0 <= slot < rl_policy_evo.SLOT_COUNT:
+        await websocket.send_json({"error": "invalid-slot"})
+        await websocket.close(code=1000)
+        return
+
+    try:
+        rl_policy_evo.get_evo_policy(slot)  # availability gate; primes the slot loader
+    except PolicyUnavailableError:
+        await websocket.send_json({"error": "no-policy"})
+        await websocket.close(code=1000)
+        return
+
+    try:
+        while True:
+            try:
+                payload = await websocket.receive_json()
+                policy = rl_policy_evo.get_evo_policy(slot)
+                action = policy.act(_parse_level_one_state(payload))
             except (
                 PolicyUnavailableError,
                 AttributeError,

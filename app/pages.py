@@ -7,6 +7,7 @@ templates. New footer pages (resources/about) get their routes here.
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
+from app import evo_history
 from app.config import settings
 
 router = APIRouter()
@@ -78,3 +79,17 @@ async def game(request: Request, embed: bool = False):
 @router.get("/game/arena")
 async def game_arena(request: Request):
     return templates.TemplateResponse(request, "game_arena.html", {"default_initials": _default_initials()})
+
+
+@router.get("/game/evolution")
+async def game_evolution(request: Request):
+    # Server-render the current snapshot for an immediate first paint; the page
+    # then polls /api/evo/history so running jobs update it without a code edit.
+    return templates.TemplateResponse(
+        request,
+        "game_evolution.html",
+        {
+            "default_initials": _default_initials(),
+            "history_snapshot": evo_history.read_history(),
+        },
+    )
