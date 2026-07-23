@@ -47,6 +47,18 @@ class GenomeCodecTests(unittest.TestCase):
         self.assertEqual(vector.shape, (g.GENOME_SIZE,))
         self.assertEqual(vector.dtype, np.float32)
 
+    def test_load_genome_accepts_both_npz_policy_and_npy_genome(self) -> None:
+        # Every --champion consumer must use load_genome, not load_champion: a run
+        # continued from a previous best passes a raw .npy and np.load returns a
+        # bare ndarray (no context manager), which is how the audit path once broke.
+        from_npz = g.load_genome(CHAMPION_PATH)
+        with tempfile.TemporaryDirectory() as tmp:
+            raw = Path(tmp) / "best.npy"
+            np.save(raw, from_npz)
+            from_npy = g.load_genome(raw)
+        np.testing.assert_array_equal(from_npz, from_npy)
+        self.assertEqual(from_npy.dtype, np.float32)
+
 
 class ForwardParityTests(unittest.TestCase):
     """The genome forward pass must equal the app's served policy exactly, so what
@@ -138,9 +150,120 @@ class RolloutTests(unittest.TestCase):
 
     def test_champion_scores_positive(self) -> None:
         vector = g.load_champion(CHAMPION_PATH)
-        mean, scores = genome_fitness(vector, (11, 12, 13), max_steps=4_000)
-        self.assertEqual(scores.shape, (3,))
-        self.assertGreater(mean, 50.0)
+        result = genome_fitness(vector, (11, 12, 13), max_steps=4_000)
+        self.assertEqual(result.scores.shape, (3,))
+        self.assertGreater(result.mean, 50.0)
+
+
+class FinishingBonusTests(unittest.TestCase):
+    """Raw score is ~linear in bricks destroyed, so the last brick pays the same as
+    the first and nothing selects for FINISHING. The bonus must concentrate reward
+    at the end — and must never leak into validation or audit numbers."""
+
+    def test_bonus_is_zero_when_disabled(self) -> None:
+        from rl.evo.evaluate import finishing_bonus
+
+        self.assertEqual(finishing_bonus(1.0, 0.0, 4.0), 0.0)
+
+    def test_bonus_peaks_only_on_a_full_clear(self) -> None:
+        from rl.evo.evaluate import finishing_bonus
+
+        self.assertAlmostEqual(finishing_bonus(1.0, 3000.0, 4.0), 3000.0)
+        self.assertLess(finishing_bonus(0.9, 3000.0, 4.0), 2000.0)
+        self.assertLess(finishing_bonus(0.667, 3000.0, 4.0), 700.0)
+
+    def test_bonus_is_monotonic_and_clamped(self) -> None:
+        from rl.evo.evaluate import finishing_bonus
+
+        values = [finishing_bonus(f / 10, 1000.0, 4.0) for f in range(11)]
+        self.assertEqual(values, sorted(values))
+        self.assertEqual(finishing_bonus(1.5, 1000.0, 4.0), 1000.0)  # clamped
+        self.assertEqual(finishing_bonus(-0.2, 1000.0, 4.0), 0.0)
+
+    def test_default_fitness_is_unchanged_raw_score(self) -> None:
+        vector = g.load_champion(CHAMPION_PATH)
+        seeds = (11, 12)
+        plain = genome_fitness(vector, seeds, max_steps=2_000)
+        self.assertAlmostEqual(plain.mean, float(plain.scores.mean()))
+
+    def test_bonus_raises_fitness_but_never_the_raw_scores(self) -> None:
+        # scores stay raw so validation/audits remain comparable across runs.
+        vector = g.load_champion(CHAMPION_PATH)
+        seeds = (11, 12, 13)
+        plain = genome_fitness(vector, seeds, max_steps=4_000)
+        shaped = genome_fitness(vector, seeds, max_steps=4_000, clear_bonus=3000.0)
+        np.testing.assert_array_equal(plain.scores, shaped.scores)
+        self.assertGreater(shaped.mean, plain.mean)
+        self.assertGreaterEqual(shaped.clear_rate, 0.0)
+        self.assertLessEqual(shaped.clear_rate, 1.0)
+
+
+class AimShapingTests(unittest.TestCase):
+    """Endgame aiming: with few bricks left, a return should point at what's left
+    instead of firing to one side and waiting for a lucky carom."""
+
+    def _env_at_endgame(self, keep_col: int, threshold: int = 12):
+        """A board with a single surviving brick in ``keep_col``, ball at centre."""
+        from rl.breakout_env import PADDLE_Y, BALL_R, BreakoutEnv
+
+        env = BreakoutEnv(aim_threshold=threshold)
+        env.reset(seed=3)
+        for brick in env.bricks:
+            brick["alive"] = False
+            brick["hits"] = 0
+        target = env.bricks[keep_col]  # top row, chosen column
+        target["alive"] = True
+        target["hits"] = 1
+        env.bricks_alive = 1
+        ball = {"x": 400.0, "y": PADDLE_Y - BALL_R, "vx": 0.0, "vy": -env.speed}
+        return env, ball, target
+
+    def test_aiming_toward_the_last_brick_scores_higher_than_away(self) -> None:
+        env, ball, target = self._env_at_endgame(keep_col=9)  # far right
+        toward = dict(ball, vx=env.speed * 0.9)
+        env._record_aim(toward)
+        scored_toward = env.aim_score
+
+        env2, ball2, _ = self._env_at_endgame(keep_col=9)
+        away = dict(ball2, vx=-env2.speed * 0.9)
+        env2._record_aim(away)
+        scored_away = env2.aim_score
+
+        self.assertGreater(scored_toward, 0.5)
+        self.assertEqual(scored_away, 0.0)
+        self.assertGreater(scored_toward, scored_away)
+
+    def test_overhead_brick_rewards_a_vertical_return(self) -> None:
+        env, ball, target = self._env_at_endgame(keep_col=5)
+        centre = target["x"] + target["w"] / 2.0
+        vertical = dict(ball, x=centre, vx=0.0)
+        env._record_aim(vertical)
+        self.assertAlmostEqual(env.aim_score, 1.0, places=3)
+
+    def test_aim_is_inert_above_the_threshold_and_when_disabled(self) -> None:
+        from rl.breakout_env import BreakoutEnv
+
+        full = BreakoutEnv(aim_threshold=12)
+        full.reset(seed=3)  # 60 bricks alive, far above the threshold
+        full._record_aim({"x": 400.0, "vx": 300.0})
+        self.assertEqual(full.aim_contacts, 0)
+
+        off = BreakoutEnv()  # disabled by default
+        off.reset(seed=3)
+        off.bricks_alive = 1
+        off._record_aim({"x": 400.0, "vx": 300.0})
+        self.assertEqual(off.aim_contacts, 0)
+        self.assertEqual(off.aim_score, 0.0)
+
+    def test_aim_bonus_shapes_fitness_without_touching_raw_scores(self) -> None:
+        vector = g.load_champion(CHAMPION_PATH)
+        seeds = (11, 12, 13)
+        plain = genome_fitness(vector, seeds, max_steps=4_000)
+        aimed = genome_fitness(
+            vector, seeds, max_steps=4_000, aim_bonus=200.0, aim_threshold=12
+        )
+        np.testing.assert_array_equal(plain.scores, aimed.scores)
+        self.assertGreaterEqual(aimed.mean, plain.mean)
 
 
 class CurriculumTests(unittest.TestCase):
@@ -165,6 +288,44 @@ class CurriculumTests(unittest.TestCase):
         first = rollout_score(self.arrays, 7, 2_000, (0.6, 1.0))
         second = rollout_score(self.arrays, 7, 2_000, (0.6, 1.0))
         self.assertEqual(first, second)
+
+    def test_plain_two_tuple_still_means_clear_max_and_prob(self) -> None:
+        from rl.evo.evaluate import Curriculum
+
+        legacy = Curriculum(*(0.8, 1.0))
+        self.assertEqual((legacy.clear_max, legacy.prob, legacy.clear_min), (0.8, 1.0, 0.0))
+
+    def test_clear_min_concentrates_practice_on_the_endgame(self) -> None:
+        # A [0, 0.9) draw mostly yields easy boards; a [0.8, 0.9) band must always
+        # start deep into the wall — that is the whole point of the min.
+        from rl.breakout_env import BreakoutEnv
+
+        banded = BreakoutEnv(
+            curriculum_clear_max=0.9, curriculum_clear_min=0.8, curriculum_prob=1.0
+        )
+        for seed in range(12):
+            banded.reset(seed=seed)
+            cleared = 60 - banded.bricks_alive
+            self.assertGreaterEqual(cleared, int(0.8 * 60) - 1, f"seed {seed}")
+            self.assertLess(cleared, 60)
+
+    def test_clear_min_zero_matches_previous_behaviour(self) -> None:
+        from rl.breakout_env import BreakoutEnv
+
+        without = BreakoutEnv(curriculum_clear_max=0.6, curriculum_prob=1.0)
+        with_explicit = BreakoutEnv(
+            curriculum_clear_max=0.6, curriculum_prob=1.0, curriculum_clear_min=0.0
+        )
+        for seed in (1, 2, 3):
+            without.reset(seed=seed)
+            with_explicit.reset(seed=seed)
+            self.assertEqual(without.bricks_alive, with_explicit.bricks_alive)
+
+    def test_clear_min_above_max_is_rejected(self) -> None:
+        from rl.breakout_env import BreakoutEnv
+
+        with self.assertRaises(ValueError):
+            BreakoutEnv(curriculum_clear_max=0.5, curriculum_clear_min=0.7)
 
     def test_fitness_worker_accepts_both_payload_shapes(self) -> None:
         vector = g.load_champion(CHAMPION_PATH)

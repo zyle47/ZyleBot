@@ -42,8 +42,12 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         stall_penalty: float = 0.0,
         curriculum_clear_max: float = 0.0,
         curriculum_prob: float = 1.0,
+        curriculum_clear_min: float = 0.0,
+        aim_threshold: int = 0,
     ) -> None:
         super().__init__()
+        if aim_threshold < 0:
+            raise ValueError("aim_threshold must be non-negative")
         if not math.isfinite(paddle_hit_reward) or paddle_hit_reward < 0:
             raise ValueError("paddle_hit_reward must be a finite non-negative number")
         if stall_paddle_hits < 0:
@@ -56,11 +60,17 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
             raise ValueError("curriculum_clear_max must be in [0, 1)")
         if not math.isfinite(curriculum_prob) or not 0.0 <= curriculum_prob <= 1.0:
             raise ValueError("curriculum_prob must be in [0, 1]")
+        if not math.isfinite(curriculum_clear_min) or not 0.0 <= curriculum_clear_min <= 1.0:
+            raise ValueError("curriculum_clear_min must be in [0, 1]")
+        if curriculum_clear_min > curriculum_clear_max:
+            raise ValueError("curriculum_clear_min must not exceed curriculum_clear_max")
         self.paddle_hit_reward = float(paddle_hit_reward)
         self.stall_paddle_hits = int(stall_paddle_hits)
         self.stall_penalty = float(stall_penalty)
         self.curriculum_clear_max = float(curriculum_clear_max)
         self.curriculum_prob = float(curriculum_prob)
+        self.curriculum_clear_min = float(curriculum_clear_min)
+        self.aim_threshold = int(aim_threshold)
         self.action_space = spaces.Discrete(3)
         self.observation_space = spaces.Box(
             low=-1.0,
@@ -78,6 +88,8 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         self.episode_paddle_hits = 0
         self.paddle_hits_without_brick = 0
         self.episode_stall_penalties = 0
+        self.aim_alignment_sum = 0.0
+        self.aim_contacts = 0
         self.lives = START_LIVES
         self.elapsed_steps = 0
         self._episode_done = False
@@ -132,6 +144,8 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         self.episode_paddle_hits = 0
         self.paddle_hits_without_brick = 0
         self.episode_stall_penalties = 0
+        self.aim_alignment_sum = 0.0
+        self.aim_contacts = 0
         self.lives = START_LIVES
         self.elapsed_steps = 0
         self._episode_done = False
@@ -144,7 +158,10 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
         """Randomly pre-clear part of the board so training sees mid/late-game states.
 
         A no-op unless ``curriculum_clear_max`` is set. Clears a uniform-random fraction in
-        ``[0, curriculum_clear_max)`` of the bricks and advances the ball speed to match the
+        ``[curriculum_clear_min, curriculum_clear_max)`` of the bricks (the min defaults to 0, so the
+        band is the whole range unless narrowed — set it to concentrate practice on the endgame, where
+        a uniform draw would otherwise spend most episodes on states the agent already handles) and
+        advances the ball speed to match the
         number removed, so a partially-cleared board is a faithful fast-ball state rather than
         a slow full board with holes. Never clears the whole board (at least one brick remains).
         Deterministic under a seeded ``reset`` because it draws from ``self.np_random``.
@@ -158,7 +175,8 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
             return
         if self.curriculum_prob < 1.0 and float(self.np_random.random()) >= self.curriculum_prob:
             return
-        fraction = float(self.np_random.random()) * self.curriculum_clear_max
+        span = self.curriculum_clear_max - self.curriculum_clear_min
+        fraction = self.curriculum_clear_min + float(self.np_random.random()) * span
         clear_count = int(fraction * len(self.bricks))
         clear_count = max(0, min(clear_count, len(self.bricks) - 1))
         if clear_count == 0:
@@ -226,8 +244,55 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
             "paddle_hits_without_brick": self.paddle_hits_without_brick,
             "stall_penalties": stall_penalties,
             "episode_stall_penalties": self.episode_stall_penalties,
+            "aim_score": self.aim_score,
             "state": self.state_dict(),
         }
+
+    def _record_aim(self, ball: dict[str, float | bool]) -> None:
+        """Score how well a paddle return points at what's left of the wall.
+
+        Only meaningful in the endgame: with a handful of bricks scattered around,
+        a policy that always returns the ball hard to one side is just waiting for a
+        lucky carom. The outgoing angle is set entirely by where the ball met the
+        paddle, so alignment here measures a real, controllable choice.
+
+        Alignment is in [0, 1]: the fraction of horizontal speed committed toward the
+        nearest surviving brick, or — when a brick is essentially overhead — how
+        vertical the return is. Recorded only; the env's own reward is untouched, and
+        callers decide what (if anything) it is worth.
+        """
+        if not self.aim_threshold or not 0 < self.bricks_alive <= self.aim_threshold:
+            return
+        ball_x = float(ball["x"])
+        nearest = min(
+            (brick for brick in self.bricks if brick["alive"]),
+            key=lambda brick: abs(brick["x"] + brick["w"] / 2.0 - ball_x),
+            default=None,
+        )
+        if nearest is None:
+            return
+        dx = nearest["x"] + nearest["w"] / 2.0 - ball_x
+        vx = float(ball["vx"])
+        speed = self.speed or 1.0
+        if abs(dx) <= nearest["w"] / 2.0:
+            # Target is overhead — the best return is a steep, vertical one.
+            alignment = max(0.0, 1.0 - abs(vx) / speed)
+        else:
+            toward = vx if dx > 0 else -vx
+            alignment = max(0.0, toward / speed)
+        self.aim_alignment_sum += alignment
+        self.aim_contacts += 1
+
+    @property
+    def aim_score(self) -> float:
+        """Mean endgame aim alignment, or 0.0 if the endgame was never reached.
+
+        Deliberately a mean, not a sum: rewarding the sum would pay a policy to keep
+        rallying in the endgame instead of finishing it.
+        """
+        if not self.aim_contacts:
+            return 0.0
+        return self.aim_alignment_sum / self.aim_contacts
 
     def enforce_bounce(self, ball: dict[str, float | bool]) -> None:
         """Mirror game.js enforceBounce, including sign behavior for zero axes."""
@@ -293,6 +358,7 @@ class BreakoutEnv(gym.Env[np.ndarray, int]):
                 ball["vx"] = math.sin(angle) * self.speed
                 ball["vy"] = -math.cos(angle) * self.speed
                 self.enforce_bounce(ball)
+                self._record_aim(ball)
                 paddle_hits += 1
 
             for brick in self.bricks:

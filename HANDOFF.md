@@ -436,7 +436,111 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
     generations and reads high.
   - **20 evo unit tests pass** (added curriculum wiring/determinism/payload-compat and the two
     conversion tests); curriculum + converter + train-resume + audit-CLI smokes all ran clean.
-  - **>>> CURRENT LIVE CHAMPION: evolved+curriculum policy, audited 1586.45 (deployed 2026-07-21). <<<**
+  - **>>> CURRENT LIVE CHAMPION: endgame-curriculum policy, audited 1850.5 (deployed 2026-07-22). <<<**
+    Run `rl/runs_evo/20260722-085850` — 300 gens, seeded from a continued genome, with the *endgame*
+    curriculum (`--curriculum-clear-max 0.85 --curriculum-prob 0.5`), `--val-rotate-every 50`,
+    `--eval-seeds 24 --val-seeds 32 --sigma 0.005 --sigma-min 0.002 --seed 5`. Paired audit on 200
+    held-out seeds (base 500000): **1850.5 vs 1538.2, +312.2, lower-95 +194.5 → PROMOTE** (wins
+    129/200). Deployed to `rl/policy/` (`training_steps=3050000` lineage, `eval_score=1850.5`, weights
+    verified byte-equal to the audited genome); outgoing 1586.45 champion backed up to scratchpad, and
+    `rl/policy/history.json` gained its ledger entry (`ENDGAME AUDIT`). Progression:
+    **683 (DQN, hard-stuck) → 1128.8 → 1586.45 → 1850.5**, all evolution, all paired-audit gated.
+    - **Rotation calibration (useful for reading any future run):** final within-block `all_time_best`
+      **2119.1** → rotation-boundary re-measure **2013.1** → **audited 1850.5**. Seed rotation roughly
+      halves the self-deception but a 32-seed estimate still reads ~160 high; only the 200-game audit is
+      the number. The rotation boundaries tracked the real trajectory well
+      (`1564.7 → 1637.2 → 1490.3 → 1536.9 → 1864.4 → 2013.1`): flat through gen 150, real climb after.
+    - **Bug fixed:** `--champion` accepting a raw `.npy` was only wired into the *seeding* path; the
+      end-of-run audit still called `load_champion` (npz-only) and crashed with
+      `TypeError: 'numpy.ndarray' object does not support the context manager protocol` **after**
+      `best.npy` was safely saved. Both paths now use `g.load_genome`; a regression test covers
+      `.npz`/`.npy` equivalence. If it ever recurs, the run is not lost — audit `best.npy` directly with
+      `python -m rl.evo.audit`.
+  - **FIRST FULL CLEARS (120-episode diagnostic of the 1850 champion).** mean **1897.2**, median 1930,
+    **39.8/60 bricks**, and **3/120 (2.5%) perfect games scoring the theoretical maximum 3000** — the
+    first ever across 360 measured episodes. Early deaths are now **0.0%** and it reaches >45 bricks
+    **31.7%** of the time (was 4.2% two champions ago). Remaining wall: of the ~38 episodes that reach
+    45+ bricks only 3 convert to a clear (~8%), so the last ~15 bricks at speed 565–640 are the gap.
+    Champion-by-champion: mean 1212.7 → 1629.1 → 1897.2; bricks 27.3 → 35.2 → 39.8; clears 0 → 0 → 3.
+  - **`--curriculum-clear-min` added to concentrate practice on the endgame (new, uncommitted).**
+    `BreakoutEnv` gained `curriculum_clear_min` (default 0.0 — byte-identical behaviour when unset), so
+    the pre-cleared fraction is drawn from a **band** `[clear_min, clear_max)` instead of always
+    `[0, clear_max)`. Rationale: `--curriculum-clear-max 0.85` alone draws uniformly, so the *average*
+    curriculum episode still starts with ~57% of bricks standing — most of the budget was spent on
+    states the agent already handles. A band like `0.75–0.95` starts every curriculum episode with only
+    3–15 bricks left at near-max speed. Wired through `rl/evo/evaluate.py` (`Curriculum` is now a
+    `NamedTuple(clear_max, prob, clear_min)` — field order chosen so existing plain `(clear_max, prob)`
+    tuples and pickled payloads stay valid) and `--curriculum-clear-min` in `evolve.py` (validated
+    against `clear_max`). Training-only, as before: validation/baseline/audit always use plain boards.
+    27 evo + 19 env tests pass, incl. a test that the band always starts deep and that `clear_min=0`
+    reproduces the previous boards exactly. **Not wired into `rl/train.py`** (DQN is retired; the env
+    default keeps it unaffected).
+  - **Endgame BAND run FAILED — first null result for evolution (`rl/runs_evo/20260722-133051`).**
+    300 gens seeded from the 1850.5 champion with `--curriculum-clear-min 0.75 --curriculum-clear-max 0.95
+    --curriculum-prob 0.5 --val-rotate-every 50 --seed 6`. Final audit: **candidate 1899.10 vs champion
+    1931.15, diff −32.05, lower-95 −171.52 → KEEP CHAMPION.** The candidate is, if anything, slightly
+    *worse*. Two takeaways:
+    - **Selection bias can be total.** On the 32 rotation-5 boards the genome was selected on it beat the
+      champion by **+230.3** (1925.0 vs 1694.7, 19/32); on 200 fresh boards it was **−32.1**. The entire
+      apparent gain was selection artefact. Also note cross-rotation comparisons are invalid — the
+      champion scores 2031.2 on rot-0 boards but 1694.7 on rot-5 boards, so only within-seed-set
+      comparisons mean anything, and only the paired audit is decisive.
+    - **Suspected cause (diagnosed before the result, still unfixed): fitness dilution.** Fitness is the
+      mean *raw score* over mixed episode types. Full boards are worth ~3000 while banded endgame boards
+      hold only ~300–500 points, so improving the endgame moves fitness ~2× less than improving
+      full-board play — the band made genomes *practise* the endgame without proportionally *rewarding*
+      endgame skill. A principled fix is to normalise each episode's score by the points available in
+      that episode (training-only; validation/audit stay raw score). **Untested.**
+  - **Clear-rate objective implemented — we had been optimising the wrong thing (new, uncommitted).**
+    Fitness was the mean *raw score*, which is ~linear in bricks destroyed, so the brutal last brick pays
+    the same as the trivial first one and **nothing in the objective ever rewarded FINISHING** — a genome
+    scoring 2900 and dying rated almost identically to one clearing at 3000. Every prior lever
+    (curriculum, band, rotation) changed *where it practised*, never *what it was rewarded for*.
+    `--clear-bonus B` (default 0 = old behaviour) now adds `B * destroyed_fraction ** clear_power` per
+    episode, with `--clear-power` default 4 concentrating the reward at the end (2/3 of the wall pays
+    ~20% of the bonus, 90% pays ~66%, a full clear pays 100%) — dense enough to give a gradient toward
+    finishing rather than a sparse clear-only lottery. Recommended `--clear-bonus 3000` (one perfect
+    board) **with the curriculum OFF**, since a pre-cleared board would collect the bonus for free.
+    `genome_fitness` now returns a `FitnessResult(mean, scores, clear_rate)` where **`scores` is always
+    RAW**, so validation, `score_episodes`, and every audit stay comparable and un-shaped — verified by a
+    test and by an audit smoke still reporting ~2150 rather than inflated values. `evo_log.csv` gains a
+    `val_clear_rate` column and the console line shows `clr NN%`. 32 evo + 19 env tests pass.
+  - **Clear-bonus run #1 (`rl/runs_evo/20260722-184410`) — KEEP CHAMPION, but the first lever to move
+    CLEARS.** `--clear-bonus 3000`, no curriculum, `--seed 7`; **killed at gen 152/300 when VS Code
+    restarted** (its integrated terminal takes child processes down with it — run long jobs from a
+    standalone PowerShell window). Audit: **+56.6 (lower-95 −78.0) → KEEP**. But on 120 identical
+    held-out boards (base 900000) the candidate cleared **5/120 (4.2%) vs the champion's 1/120 (0.8%)**
+    with **+133.5** mean — so both independent measurements were *positive but not significant*,
+    suggesting a small real gain too marginal for the bar. Every prior winner earned its biggest steps
+    after gen 150, and this run was still stepping at gens 124/149/150 when it died, so "cut short" is
+    the most likely explanation for the small margin. Note the champion measured 0.8% clears here vs
+    2.5% on earlier boards — clear rate is extremely noisy, and the run's own 32-board `val_clear_rate`
+    (1/32 = "3%") is far too small to resolve it; only ≥120-episode measurements mean anything.
+  - **Endgame aim shaping implemented (new, uncommitted, opt-in).** From watching `/game/evolution`:
+    with few bricks left the champion often fires the ball hard to one side and waits for a lucky carom
+    rather than aiming. Since the outgoing angle is set *entirely* by where the ball meets the paddle
+    (`offset × 60°`), aiming is a real controllable choice and can be scored at contact time.
+    `BreakoutEnv(aim_threshold=N)` (default 0 = off) records, on each paddle return while
+    `0 < bricks_alive <= N`, an alignment in [0, 1]: the fraction of horizontal speed committed toward
+    the *nearest surviving brick*, or — when a brick is essentially overhead — how vertical the return
+    is. Exposed as the `aim_score` property (**mean** over endgame contacts, never the sum: summing
+    would pay a policy to keep rallying instead of finishing) and in `info`. Evolution adds
+    `--aim-bonus B --aim-threshold N` (B needs N; try `200 @ 12`), threaded through
+    `rollout_score`/`genome_fitness`/`evaluate_population`. The env's own reward is untouched — evolution
+    reads raw `info["score"]`, so all shaping lives in the fitness function; validation, `score_episodes`
+    and audits stay raw and comparable. 36 evo + 19 env tests pass (aim toward vs away, overhead case,
+    inert above threshold / when disabled, and raw scores unchanged under shaping).
+    - **Caveat, stated up front:** the clear-bonus rewards an *outcome*; this rewards a *proxy for how
+      to get there*, which is where Goodhart bites, and shaping has misfired on this project before. It
+      is also possible "fire it hard to one side" is genuinely near-optimal given wall-bounce geometry,
+      in which case this pushes the policy off a good strategy. Keep B small relative to score and let
+      the paired audit decide.
+  - **On "100% clear rate":** not realistically attainable as specified. One life means ~100+ consecutive
+    perfect returns per episode; 99.9% per-return reliability still only yields ~90% clears, and the
+    ±15° random launch plus chaotic bounce dynamics make literal perfection implausible for a reactive
+    MLP at 30 decisions/s. 2.5% → 40–70% is the plausible target; a true 100% would need the *task*
+    changed (multi-life or a lower speed cap), not a better brain.
+  - **Superseded champion (2026-07-21), kept for lineage:** audited 1586.45.
     Run `rl/runs_evo/20260721-180231` (seeded from the 1128.8 champion; `--eval-seeds 24 --val-seeds 32
     --sigma 0.005 --sigma-min 0.002 --seed 2 --curriculum-clear-max 0.6 --curriculum-prob 0.5`, 300 gens)
     climbed validation 1277.5→1961.6 across 9 steps. **Two independent 200-game paired audits both said
@@ -444,7 +548,7 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
     100042 → 1586.45 vs 1179.15 (+407.30, lower-95 +293.29). Deployed to `rl/policy/`
     (`training_steps=3050000` lineage, `eval_score=1586.45`, weights verified byte-equal to the audited
     genome); the outgoing 1128.8 champion was backed up to scratchpad, and every prior champion remains
-    recoverable. Progression: **683 (DQN, hard-stuck) → 1128.8 (evolution) → 1586.45 (curriculum evolution)**.
+    recoverable.
   - **Lesson — late validation gains were largely validation-overfitting.** `all_time_best` rose
     1722.5→1961.6 over gens 151–243, but the audited truth barely moved: the gen-151 genome audited
     **1575.5** and the final gen-243 genome audited **1586.45** (≈+11, on different seed sets). So the

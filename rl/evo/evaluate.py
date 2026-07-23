@@ -15,17 +15,29 @@ pure numpy, so there is no GPU contention and no torch import.
 from __future__ import annotations
 
 import multiprocessing as mp
+from typing import NamedTuple
 
 import numpy as np
 
 from rl.breakout_env import MAX_EPISODE_STEPS, BreakoutEnv
 from rl.evo import genome as g
 
-# (curriculum_clear_max, curriculum_prob). Pre-clears a random fraction of the wall
-# at reset and advances ball speed to match, so genomes actually practise the fast
-# mid/late game they otherwise almost never reach. NO_CURRICULUM is a plain board.
-Curriculum = tuple[float, float]
-NO_CURRICULUM: Curriculum = (0.0, 1.0)
+class Curriculum(NamedTuple):
+    """Training-only board pre-clearing, so genomes practise the fast late game they
+    otherwise almost never reach.
+
+    ``clear_min``/``clear_max`` bound the pre-cleared fraction; narrowing the band
+    concentrates practice on the endgame instead of spending most episodes on states
+    the agent already handles. Field order keeps plain ``(clear_max, prob)`` tuples
+    valid, so older call sites and pickled payloads still work.
+    """
+
+    clear_max: float = 0.0
+    prob: float = 1.0
+    clear_min: float = 0.0
+
+
+NO_CURRICULUM = Curriculum()
 
 
 def rollout_score(
@@ -33,14 +45,25 @@ def rollout_score(
     seed: int,
     max_steps: int,
     curriculum: Curriculum = NO_CURRICULUM,
-) -> tuple[float, int]:
-    """Play one greedy single-life episode; return (score, steps).
+    aim_threshold: int = 0,
+) -> tuple[float, int, float, float]:
+    """Play one greedy single-life episode; return (score, steps, destroyed_fraction).
+
+    ``destroyed_fraction`` is 1.0 only when the whole wall is gone, which is what the
+    finishing bonus keys off — raw score alone treats the brutal last brick exactly
+    like the trivial first one.
 
     The curriculum draw comes from the env's seeded RNG, so identical seeds give
     identical pre-cleared boards across genomes — the comparison stays fair.
     """
-    clear_max, prob = curriculum
-    env = BreakoutEnv(curriculum_clear_max=clear_max, curriculum_prob=prob)
+    # Normalises plain tuples too, so a 2-tuple (clear_max, prob) still works.
+    settings = Curriculum(*curriculum)
+    env = BreakoutEnv(
+        curriculum_clear_max=settings.clear_max,
+        curriculum_prob=settings.prob,
+        curriculum_clear_min=settings.clear_min,
+        aim_threshold=aim_threshold,
+    )
     observation, info = env.reset(seed=seed)
     done = False
     steps = 0
@@ -50,7 +73,33 @@ def rollout_score(
         steps += 1
         if steps >= max_steps:
             break
-    return float(info["score"]), steps
+    total = len(env.bricks) or 1
+    destroyed_fraction = (total - env.bricks_alive) / total
+    return float(info["score"]), steps, float(destroyed_fraction), env.aim_score
+
+
+class FitnessResult(NamedTuple):
+    """``mean`` is the selection value (shaped when a finishing bonus is set);
+    ``scores`` is always the RAW per-episode score, so validation and audits stay
+    comparable; ``clear_rate`` is the fraction of episodes that cleared the wall."""
+
+    mean: float
+    scores: np.ndarray
+    clear_rate: float
+
+
+def finishing_bonus(destroyed_fraction: float, clear_bonus: float, clear_power: float) -> float:
+    """Reward that ramps steeply as the wall empties, peaking on a full clear.
+
+    Raw score is essentially linear in bricks destroyed, so the last (hardest) brick
+    pays the same as the first (trivial) one — which is why nothing we tried ever
+    selected for *finishing*. Raising the destroyed fraction to a power concentrates
+    the reward at the end: at power 4, clearing 2/3 of the wall is worth only ~20% of
+    the bonus, 90% is worth ~66%, and a full clear pays it all.
+    """
+    if clear_bonus <= 0.0:
+        return 0.0
+    return clear_bonus * max(0.0, min(1.0, destroyed_fraction)) ** clear_power
 
 
 def genome_fitness(
@@ -58,14 +107,34 @@ def genome_fitness(
     seeds: tuple[int, ...],
     max_steps: int = MAX_EPISODE_STEPS,
     curriculum: Curriculum = NO_CURRICULUM,
-) -> tuple[float, np.ndarray]:
-    """Mean score over ``seeds`` for one genome (unflattened once, reused)."""
+    clear_bonus: float = 0.0,
+    clear_power: float = 4.0,
+    aim_bonus: float = 0.0,
+    aim_threshold: int = 0,
+) -> FitnessResult:
+    """Fitness over ``seeds`` for one genome (unflattened once, reused).
+
+    With ``clear_bonus`` at its default 0 this is exactly the old mean raw score.
+    """
     arrays = g.unflatten(vector)
-    scores = np.array(
-        [rollout_score(arrays, seed, max_steps, curriculum)[0] for seed in seeds],
-        dtype=np.float64,
+    raw: list[float] = []
+    shaped: list[float] = []
+    clears = 0
+    for seed in seeds:
+        score, _, destroyed, aim = rollout_score(
+            arrays, seed, max_steps, curriculum, aim_threshold
+        )
+        raw.append(score)
+        shaped.append(
+            score + finishing_bonus(destroyed, clear_bonus, clear_power) + aim_bonus * aim
+        )
+        clears += destroyed >= 1.0
+    scores = np.array(raw, dtype=np.float64)
+    return FitnessResult(
+        mean=float(np.mean(shaped)),
+        scores=scores,
+        clear_rate=clears / len(seeds) if seeds else 0.0,
     )
-    return float(scores.mean()), scores
 
 
 # --- Parallel population evaluation ------------------------------------------
@@ -97,14 +166,17 @@ def score_episodes(
         return np.array(pool.map(_episode_worker, payloads), dtype=np.float64)
 
 
-def _fitness_worker(
-    payload: tuple[np.ndarray, tuple[int, ...], int] | tuple[np.ndarray, tuple[int, ...], int, Curriculum]
-) -> float:
-    # Accepts the 3-tuple (no curriculum) and 4-tuple forms so existing callers
-    # and pickled payloads stay valid.
+def _fitness_worker(payload: tuple) -> float:
+    # Trailing elements are optional so shorter (older) payload tuples stay valid.
     vector, seeds, max_steps = payload[0], payload[1], payload[2]
     curriculum = payload[3] if len(payload) > 3 else NO_CURRICULUM
-    return genome_fitness(vector, seeds, max_steps, curriculum)[0]
+    clear_bonus = payload[4] if len(payload) > 4 else 0.0
+    clear_power = payload[5] if len(payload) > 5 else 4.0
+    aim_bonus = payload[6] if len(payload) > 6 else 0.0
+    aim_threshold = payload[7] if len(payload) > 7 else 0
+    return genome_fitness(
+        vector, seeds, max_steps, curriculum, clear_bonus, clear_power, aim_bonus, aim_threshold
+    ).mean
 
 
 def evaluate_population(
@@ -115,13 +187,20 @@ def evaluate_population(
     max_steps: int = MAX_EPISODE_STEPS,
     pool: "mp.pool.Pool | None" = None,
     curriculum: Curriculum = NO_CURRICULUM,
+    clear_bonus: float = 0.0,
+    clear_power: float = 4.0,
+    aim_bonus: float = 0.0,
+    aim_threshold: int = 0,
 ) -> np.ndarray:
     """Return a float64 fitness array aligned with ``vectors``.
 
     Serial when ``workers <= 1`` (also the test path); otherwise a caller-provided
     ``pool`` is reused across generations, or a transient one is created.
     """
-    payloads = [(vector, seeds, max_steps, curriculum) for vector in vectors]
+    payloads = [
+        (vector, seeds, max_steps, curriculum, clear_bonus, clear_power, aim_bonus, aim_threshold)
+        for vector in vectors
+    ]
     if workers <= 1 and pool is None:
         return np.array([_fitness_worker(p) for p in payloads], dtype=np.float64)
     if pool is not None:

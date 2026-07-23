@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 
 from rl.evo import genome as g
-from rl.evo.evaluate import evaluate_population, genome_fitness
+from rl.evo.evaluate import Curriculum, evaluate_population, genome_fitness
 from rl.evo.population import EvoConfig, init_population, next_generation
 
 DEFAULT_CHAMPION = Path("rl/policy/breakout_policy.npz")
@@ -172,8 +172,8 @@ def paired_audit(
     from rl.train import paired_gate_decision  # lazy; reuses the one true gate
 
     seeds = tuple(seed + AUDIT_SEED_OFFSET + i for i in range(episodes))
-    _, candidate_scores = genome_fitness(candidate, seeds)
-    _, champion_scores = genome_fitness(champion, seeds)
+    candidate_scores = genome_fitness(candidate, seeds).scores
+    champion_scores = genome_fitness(champion, seeds).scores
     gate = paired_gate_decision(candidate_scores, champion_scores)
     return gate
 
@@ -230,6 +230,45 @@ def build_parser() -> argparse.ArgumentParser:
         "Validation always uses a plain full board, so the reported score stays comparable.",
     )
     parser.add_argument(
+        "--clear-bonus",
+        type=float,
+        default=0.0,
+        help="TRAINING fitness only: add clear-bonus * (bricks_destroyed_fraction ** clear-power) to "
+        "each episode. Raw score is ~linear in bricks, so the brutal last brick pays the same as the "
+        "trivial first one and nothing ever selects for FINISHING. Try 3000 (= one perfect board). "
+        "Validation and audits stay raw score. Best used with the curriculum OFF, since a pre-cleared "
+        "board would collect the bonus for free.",
+    )
+    parser.add_argument(
+        "--clear-power",
+        type=float,
+        default=4.0,
+        help="exponent concentrating the finishing bonus at the end of the wall (default 4)",
+    )
+    parser.add_argument(
+        "--aim-bonus",
+        type=float,
+        default=0.0,
+        help="TRAINING fitness only: add aim-bonus * mean endgame aim alignment (0-1). With few bricks "
+        "left a policy can just fire the ball hard to one side and wait for a lucky carom; this rewards "
+        "returns that actually point at the nearest surviving brick. Needs --aim-threshold. Keep it "
+        "SMALL relative to score (try 100-300): it rewards a proxy for good play, not the outcome.",
+    )
+    parser.add_argument(
+        "--aim-threshold",
+        type=int,
+        default=0,
+        help="only score aim while at most this many bricks remain (0 disables aim shaping; try 12)",
+    )
+    parser.add_argument(
+        "--curriculum-clear-min",
+        type=float,
+        default=0.0,
+        help="TRAINING fitness only: lower bound of the pre-cleared fraction (default 0). Narrowing the "
+        "band, e.g. --curriculum-clear-min 0.75 --curriculum-clear-max 0.95, concentrates practice on "
+        "the endgame; a uniform [0, max) draw otherwise spends most episodes on already-solved states.",
+    )
+    parser.add_argument(
         "--curriculum-prob",
         type=float,
         default=0.5,
@@ -266,8 +305,22 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
         parser.error("--curriculum-clear-max must be in [0, 1)")
     if not 0.0 <= args.curriculum_prob <= 1.0:
         parser.error("--curriculum-prob must be in [0, 1]")
+    if not 0.0 <= args.curriculum_clear_min <= 1.0:
+        parser.error("--curriculum-clear-min must be in [0, 1]")
+    if args.curriculum_clear_min > args.curriculum_clear_max:
+        parser.error("--curriculum-clear-min must not exceed --curriculum-clear-max")
     if args.val_rotate_every < 0:
         parser.error("--val-rotate-every must be non-negative")
+    if args.clear_bonus < 0:
+        parser.error("--clear-bonus must be non-negative")
+    if args.clear_power <= 0:
+        parser.error("--clear-power must be positive")
+    if args.aim_bonus < 0:
+        parser.error("--aim-bonus must be non-negative")
+    if args.aim_threshold < 0:
+        parser.error("--aim-threshold must be non-negative")
+    if args.aim_bonus > 0 and args.aim_threshold <= 0:
+        parser.error("--aim-bonus needs --aim-threshold (e.g. 12)")
 
 
 def main() -> None:
@@ -326,6 +379,7 @@ def main() -> None:
                 "all_time_best",
                 "seconds",
                 "val_rotation",
+                "val_clear_rate",
             )
         )
 
@@ -337,23 +391,31 @@ def main() -> None:
 
     # Baseline: the seed genome's fixed-validation score. best.npz starts here so
     # nothing weaker than the champion is ever saved or published.
-    best_val, _ = genome_fitness(seed_vector, val_seeds)
+    baseline_result = genome_fitness(seed_vector, val_seeds)
+    best_val = baseline_result.mean
     baseline_val = best_val  # the champion's fixed-validation score — the "line to beat"
     best_vector = seed_vector.copy()
     np.save(run_dir / "best.npy", best_vector)
     # Training-only: validation/baseline above and the final audit always use a plain
     # full board, so every reported number stays comparable across runs.
-    curriculum = (args.curriculum_clear_max, args.curriculum_prob)
+    curriculum = Curriculum(
+        clear_max=args.curriculum_clear_max,
+        prob=args.curriculum_prob,
+        clear_min=args.curriculum_clear_min,
+    )
     curriculum_label = (
-        f"{args.curriculum_clear_max:g}@p{args.curriculum_prob:g}"
+        f"{args.curriculum_clear_min:g}-{args.curriculum_clear_max:g}@p{args.curriculum_prob:g}"
         if args.curriculum_clear_max > 0
         else "off"
     )
     print(
         f"Evo run: {run_dir} | seed={seed_label} | pop={config.population} "
         f"| gens={args.generations} | workers={args.workers} | curriculum={curriculum_label} "
-        f"| val_rotate={args.val_rotate_every or 'off'}\n"
-        f"Baseline seed validation score ({args.val_seeds} plain-board seeds): {best_val:.1f}"
+        f"| val_rotate={args.val_rotate_every or 'off'} "
+        f"| clear_bonus={args.clear_bonus:g}@p{args.clear_power:g} "
+        f"| aim={args.aim_bonus:g}@{args.aim_threshold or 'off'}\n"
+        f"Baseline seed validation score ({args.val_seeds} plain-board seeds): {best_val:.1f} "
+        f"(clears {baseline_result.clear_rate:.0%})"
     )
     if args.curriculum_clear_max > 0 and args.curriculum_prob >= 0.95:
         print(
@@ -377,8 +439,8 @@ def main() -> None:
                 val_rotation = generation // args.val_rotate_every
                 val_seeds = validation_seeds(args.seed, args.val_seeds, val_rotation)
                 previous_best = best_val
-                best_val, _ = genome_fitness(best_vector, val_seeds)
-                baseline_val, _ = genome_fitness(seed_vector, val_seeds)
+                best_val = genome_fitness(best_vector, val_seeds).mean
+                baseline_val = genome_fitness(seed_vector, val_seeds).mean
                 print(
                     f"  validation seeds rotated (#{val_rotation}): best re-scored "
                     f"{previous_best:.1f} -> {best_val:.1f}, baseline {baseline_val:.1f}"
@@ -387,10 +449,13 @@ def main() -> None:
             fitnesses = evaluate_population(
                 population, train_seeds, workers=args.workers, pool=pool,
                 curriculum=curriculum,
+                clear_bonus=args.clear_bonus, clear_power=args.clear_power,
+                aim_bonus=args.aim_bonus, aim_threshold=args.aim_threshold,
             )
             order = np.argsort(fitnesses)[::-1]
             gen_best_vector = population[int(order[0])]
-            val_score, _ = genome_fitness(gen_best_vector, val_seeds)
+            val_result = genome_fitness(gen_best_vector, val_seeds)
+            val_score = val_result.mean
 
             improved = val_score > best_val
             if improved:
@@ -435,12 +500,13 @@ def main() -> None:
                         f"{best_val:.1f}",
                         f"{seconds:.1f}",
                         val_rotation,
+                        f"{val_result.clear_rate:.3f}",
                     )
                 )
             print(
                 f"gen {generation:4d} | sigma {sigma:.4f} | train best "
                 f"{float(fitnesses.max()):6.1f} mean {float(fitnesses.mean()):6.1f} "
-                f"| val {val_score:6.1f} | all-time {best_val:6.1f}"
+                f"| val {val_score:6.1f} clr {val_result.clear_rate:4.0%} | all-time {best_val:6.1f}"
                 f"{'  <-- new best' if improved else ''} | {seconds:4.1f}s"
                 f"{'' if published else '  (viewer frame dropped)'}"
             )
@@ -458,7 +524,9 @@ def main() -> None:
     audit_payload = None
     if args.audit_episodes and not args.from_scratch:
         print(f"Auditing best vs champion on {args.audit_episodes} paired seeds...")
-        champion_vector = g.load_champion(args.champion)
+        # Must match the seeding path above: --champion may be a raw .npy genome
+        # (continuing a previous run) as well as a published .npz policy.
+        champion_vector = g.load_genome(args.champion)
         gate = paired_audit(best_vector, champion_vector, args.audit_episodes, args.audit_seed)
         verdict = "PROMOTE" if gate["accepted"] else "KEEP CHAMPION"
         audit_payload = {

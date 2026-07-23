@@ -28,5 +28,15 @@
     "phase": "CURRICULUM EVO",
     "measure": "Promoted 200-game audit mean",
     "sort_key": "20260721-220924"
+  },
+  {
+    "label": "ENDGAME AUDIT",
+    "score": 1850.5,
+    "date": "22 JUL 2026",
+    "detail": "Endgame curriculum + rotating validation champion",
+    "run": "20260722-085850",
+    "phase": "CURRICULUM EVO",
+    "measure": "Promoted 200-game audit mean",
+    "sort_key": "20260722-131648"
   }
 ]
