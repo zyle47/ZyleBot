@@ -2,7 +2,7 @@
 
 > Living *current-state* doc — what exists, what's in flight, and the gotchas that save debugging
 > time. **The main (orchestrator) model updates this file every time work lands** — subagents
-> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-22**.
+> report, they don't document. Not a changelog; git history is the changelog. Last updated: **2026-07-24**.
 >
 > Companions: `CLAUDE.md` (shared project rules + Claude agent routing), `README.md` (user-facing setup/tools),
 > `.codex/config.toml` + `.codex/agents/` (project-scoped Codex configuration and specialist roles).
@@ -586,6 +586,298 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
     When doing so, **change `--seed`**: the previous run's validation seeds are the ones that genome was
     selected on, so reusing them gives an overfit (unbeatable) baseline.
 
+- **`zyle_learning/` (`zl`) — universal any-level Breakout agent, pixel + gradient RL (separate 3rd env, new).**
+  Codex-built from the plan brief; isolated venv (`zyle_learning/venv`, torch+CUDA), never imports `rl/` or `app/`.
+  Gymnasium env renders the board to a fixed 32-channel 96×96 image (8 base ch × 4 frame-stack) so a CNN sees any
+  layout; SB3 PPO `CnnPolicy` (`SemanticBreakoutCNN`); procedural level generator + built-in levels 1–3 for
+  training with **level 4 sealed** as the zero-shot test; physics is a faithful port **verified genuine** against a
+  checked-in golden fixture (0.0 delta vs `rl/breakout_env.py`, data-only — no runtime coupling). 20 tests pass.
+  - **State (2026-07-24): pixel transfer is REAL, but no mastery run has happened yet.** Every run to date is
+    `m1_level1*` (level 1 only); the mixed/procedural M2 + generalization M3 milestones were never trained at scale.
+    Best M1 checkpoint zero-shot vs a random policy: held-out level 4 **4733 vs 190** (25× score), fresh procedural
+    **2317 vs 473** (4.9×) — the CNN generalizes. **But `clear_rate = 0.000` on every suite/run** (never finishes a
+    board), and the one 5M-step run **collapsed** (ep_len 1463→692, reward peaked −2.6 then fell to −9.9).
+  - **Root cause found + fixed (this session, main model).** Reward was `events.points/100` — but board *value*
+    spans **~80×** across the distribution (level 1 = 3,000 pts, level 4 = 106,560; procedural 1,320–94,715), so the
+    same achievement paid wildly different amounts and the value function couldn't fit it; the `-5.0` life penalty
+    also outweighed ~10 bricks, teaching "don't die" over "clear". Fix in `zl/env/breakout.py`: reward is now
+    `points / current_initial_points` (fraction of *this* board's value → level-independent), clear bonus is a **flat
+    `+2.0`** (`clear_bonus_scale`), progression `+1.0`, life penalty `5.0 → 0.15`; `ent_coef 0.02 → 0.01` in
+    `config.py`. Verified: full-board reward now same order across all levels (−0.32…−0.45, was 80× apart); with the
+    endgame curriculum a *random* policy already lands clears (level 1: 25%, reward flips positive); 20 tests pass.
+    No test depended on reward magnitude. `rl/policy/` and all `rl/` work untouched.
+  - **Sanity run PASSED (`runs/sanity_v2`, 1M steps from scratch, v2).** Stability fix fully validated: ep_rew
+    −0.38→−0.19 (climbing, **no collapse**), ep_len 218→675, value_loss flat 0.00–0.04, and validation
+    bricks_cleared 0.12→**0.383** / score 274→**1018** by 1M. Still 0 full-clears — expected: from-scratch at 1M is
+    early (the old v1 5M run needed millions of steps to reach 0.58 bricks). The 700k mid-run dip was transient.
+  - **Observation decision: the mastery run MUST be v2.** v1 (7-ch) renders durability as `hits/max_hits`, so a
+    *fresh* 1-hit, 2-hit, and 3-hit brick all look identical (all =1.0) — v1 is blind to brick strength on levels
+    2/3/4 + procedural. v2 (8-ch) splits it into `remaining_hits/5` + `max_hits/5`, so multi-hit bricks are
+    perceptible. **All proven M1 generalizers are v1 (28-ch); only `runs/sanity_v2/best_validation_model.zip` is v2
+    (32-ch).** So the flagship warm-starts from the sanity v2 checkpoint (fixed-reward-native, already 0.38 bricks),
+    not the stronger-but-v1 M1 models. Resume-into-mixed smoke verified: no crash, level 4 sealed,
+    `explained_variance 0.70` (value fn calibrated — the metric that blew up in the collapse is healthy).
+  - **The mastery command (Nemanja runs it, standalone PowerShell — VS Code's terminal killed 3 prior runs):**
+    `python -m zl.train --resume runs/sanity_v2/checkpoints/best_validation_model.zip --level-mode mixed
+    --observation-version v2 --total-timesteps 15000000 --curriculum-clear-min 0.5 --curriculum-clear-max 0.9
+    --curriculum-probability 0.5 --validation-freq 250000 --validation-episodes 20 --run-dir runs/mastery_v2`.
+    ~6–9 h on the 3080 Ti; Ctrl-C safe (best-on-procedural `best_validation_model.zip` saved continuously).
+    Then M3: `python -m zl.evaluate --model runs/mastery_v2/checkpoints/best_validation_model.zip` (held-out level 4
+    + fresh procedural vs the `--baseline random` floor) — the actual deliverable number.
+  - **Mastery run #1 (`runs/mastery_v2`) — stopped by Nemanja at ~8M/15M steps (needed the PC); PLATEAUED, no collapse.**
+    Warm-started from the v2 sanity checkpoint as planned. Big early win: **rollout reward flipped positive** (−0.41 →
+    +0.65 peak) and **the first full clears of unseen boards appeared** — validation `clear_rate` reached 0.20 and held
+    a steady 0.10 for ~10 checkpoints (on procedural boards it never trained on). Value fn stayed healthy the whole run
+    (explained_variance positive, one transient dip to −0.01 that self-recovered to 0.6; value_loss ~0). **But it peaked
+    around 2.5M steps and never decisively beat it** over the next 5.5M: validation bricks oscillated 0.60–0.80,
+    clear_rate bounced 0.0–0.2 (±2–4 episodes of noise at 20 val episodes), a late blip hit bricks 0.801/score 17,559
+    @~6.75M but with 0 clears. **`best_validation_model.zip` holds the ~2.5M peak** (selection_metric 1.186 = clear 0.20
+    / bricks 0.786 / score 16,914; selection metric is `2*clear_rate + bricks_fraction` on procedural val seeds).
+    **M3 RESULT (deliverable, `best_validation_model.zip` vs `--baseline random`):** fresh procedural, 50 unseen
+    boards — **clear_rate 0.200, bricks 0.699, score 8,701** (random: 0.000 / 0.071 / 480). Held-out level 4, 5 eps —
+    **clear_rate 0.000, bricks 0.092, score 7,531** (random: 0.000 / 0.005 / 190). **The generalization goal is
+    substantially met:** one pixel-trained brain clears 20% of never-seen random boards outright and 70% of their
+    bricks — robust across two disjoint procedural seed sets (val ~0.1–0.2, test 0.20), so real generalization not
+    memorization, and 18–40× the random floor. Big jump over the old level-1-only M1 model (procedural 0.17 bricks / ~0
+    clears → 0.70 / 0.20). **Frontier = level 4** (1,152-brick tribute wall): plays 40× random but ~9% bricks, 0 clears
+    — expected, it's ~15× a normal board at max speed on 3 lives. Next-run ideas if we push further: larger validation
+    set (20 episodes too noisy to resolve clear_rate), reward-normalize returns to help the value fn, up-weight the
+    generator's large-board branch to specifically attack level-4 scale, or accept ~2.5M as the achieved level.
+    `rl/` and the deployed champion remain untouched throughout.
+  - **Large-board training lever added to attack the level-4 frontier (new, this session).** `procedural_level()`
+    gained `large_probability` (None = legacy per-family rate); when set it takes the large branch that often AND, for
+    boosted-large boards, forces near-solid dense fill at a 40–48 × 20–24 footprint so brick counts land in the 1000+
+    regime (not big-but-sparse). Threaded through `BreakoutEnv(procedural_large_probability=...)` (both procedural +
+    mixed sampling) and `zl.train --large-board-probability` (feeds training **and** the mixed-validation env, so the
+    live validation signal tracks big-board skill). Measured distribution of 1000+/500+ brick boards: default 2%/18%,
+    `0.5` → 22%/44%, `0.7` → 36%/66%. 20 tests pass; resume-into-this-config smoke clean (explained_variance 0.49,
+    level 4 sealed). **Mastery run #2 command (warm-start from run #1's best generalist):**
+    `python -m zl.train --resume runs/mastery_v2/checkpoints/best_validation_model.zip --level-mode mixed
+    --observation-version v2 --large-board-probability 0.6 --curriculum-clear-min 0.5 --curriculum-clear-max 0.95
+    --curriculum-probability 0.5 --total-timesteps 10000000 --validation-freq 250000 --validation-episodes 20
+    --run-dir runs/mastery_big`. NOTE: validation is now big-heavy, so watch `validation/bricks_cleared_fraction` +
+    `mean_score` (big boards rarely fully clear, so `clear_rate` will read low — expected, not a regression). Judge
+    success by re-running the level-4 M3 eval afterward (bricks_fraction was 0.092 / score 7,531 at run #1).
+  - **Per-level reality of run #1's best generalist (20 eps each, `scratchpad/per_level.py`):** L1 **30% clears** /
+    93.9% bricks; L2 **0%** / 79.6%; L3 **0%** / 75.8%; L4 (held out) **0%** / 10.2%. So only level 1 is mastered;
+    levels 2/3 play well but never *finish* the last ~20% (scattered multi-hit Hard/Ultima endgame); level 4 barely
+    scratched because it was never trained on.
+  - **Pivot to level MASTERY (Nemanja's ask: "master levels 1-4"): train directly on all four built-ins, drop the
+    hold-out.** New trainer flags (this session): `--builtin-levels 1,2,3,4` trains on the real game levels directly
+    and disables the generalization hold-out (nothing sealed); `--validation-builtin` selects the checkpoint by mean
+    clear/bricks across those levels and logs/prints per-level `validation/clear_L1..L4`. Both verified (20 tests pass,
+    per-level validation smoke prints `L1=0.33 L2/3/4=0.00`, resume clean, `held_out_level=none`). **This supersedes
+    the generalization framing — level 4 is now a training target, not a zero-shot test.** Realistic expectations:
+    levels 1-3 mastery is very reachable (2/3 just need the endgame curriculum to learn to finish); **level 4 full
+    clears stay hard** (1,152 bricks on 3 lives at max speed) but bricks_fraction should jump far past 0.10 and the
+    curriculum makes some clears possible. **Mastery command (warm-start from run #1's best):**
+    `python -m zl.train --resume runs/mastery_v2/checkpoints/best_validation_model.zip --level-mode mixed
+    --observation-version v2 --builtin-levels 1,2,3,4 --validation-builtin --procedural-probability 0.3
+    --large-board-probability 0.6 --curriculum-clear-min 0.5 --curriculum-clear-max 0.95 --curriculum-probability 0.5
+    --total-timesteps 10000000 --validation-freq 250000 --validation-episodes 24 --run-dir runs/mastery_levels`.
+    Judge with `scratchpad/per_level.py --model runs/mastery_levels/checkpoints/best_validation_model.zip`.
+  - **Mastery run RESULT (`runs/mastery_levels`, ran full 10M steps; healthy throughout — reward +0.10→+0.52,
+    explained_variance recovered to 0.75, no collapse).** Per-level clean eval (15 eps) of `best_validation_model`,
+    before (run #1 generalist) → after:
+    L1 **30%→53% clears / 94%→97% bricks**; L2 **0%→7% / 80%→89%**; L3 **0%→7% / 76%→82%**; L4 **0%→0% / 10%→11%**.
+    Worked on 3 of 4: L1 mastered; L2 & L3 cracked (now finish ~7%, reach 82–89% bricks — pure endgame problem, stall on
+    the last ~6–10 scattered 3-hit Ultima bricks); L4 essentially unchanged (dies early on the 1,152-brick wall, never
+    reaches an endgame to practice). Gradient flowed to the levels it was already closest on (uniform sampling gave each
+    level only ~¼ of built-in episodes). **Next (offered, needs a small `--builtin-weights` sampler feature): weight
+    L3+L4 higher + deepen curriculum to 0.85–0.98 to drill the last bricks; expect L2/L3 → real clear rates but L4 full
+    clears stay unlikely (realistic L4 win is bricks% 11%→30–50%, not clears).** `rl/`/deployed champion untouched.
+  - **Per-level sampling weights added + hard-levels run launched (this session).** `BreakoutEnv(training_level_weights=...)`
+    biases which built-in level each episode draws (seeded `np_random.choice`), exposed as `zl.train --builtin-weights`
+    (aligned with `--builtin-levels`). Verified: weights `1,2,4,3` → sampled shares L1 10% / L2 20% / L3 40% / L4 30%
+    (exact); 20 tests pass; resume + deep-curriculum + per-level-validation smoke clean. **Hard-levels command (warm-start
+    from `mastery_levels` best, pour gradient on L3/L4, drill the last bricks):**
+    `python -m zl.train --resume runs/mastery_levels/checkpoints/best_validation_model.zip --level-mode mixed
+    --observation-version v2 --builtin-levels 1,2,3,4 --builtin-weights 1,2,4,3 --validation-builtin
+    --procedural-probability 0.2 --large-board-probability 0.6 --curriculum-clear-min 0.85 --curriculum-clear-max 0.98
+    --curriculum-probability 0.5 --total-timesteps 10000000 --validation-freq 250000 --validation-episodes 24
+    --run-dir runs/mastery_hard`. Target: L3 (and L2) → real clear rates, L4 bricks% up; judge with per_level.py.
+  - **Live spectator viewer built (`zl/viewer/`, this session) — watch the CNN play levels 1-4 in the browser.**
+    The CNN can't run in-browser like the evolution MLP (numpy), so this is server-authoritative: `zl/viewer/server.py`
+    runs the *real* zl env, steps it with the policy on **CPU** (never fights GPU training), and streams game state
+    (paddle/balls/destroyed-brick diffs/score) over **SSE** to a `<canvas>` renderer (`static/index.html` + `viewer.js`
+    + `viewer.css`). **Stdlib-only server (http.server) — zero new venv deps; fully isolated (imports only zl).** Level
+    selector 1-4, live HUD, cleared/played tally, win/lose banner, auto-restart per attempt. Verified headless: page +
+    assets serve, SSE emits valid init (60 bricks, obs auto-detected v2) + live frames (paddle tracks ball, brick diffs).
+    Run: `python -m zl.viewer.server` (defaults to `mastery_levels` best on port 8100) → open http://127.0.0.1:8100;
+    flags `--model <ckpt>`, `--port`, `--speed` (1.0 = real-time). Browser/visual QA is Nemanja's (no in-app browser).
+    **Live-reload added:** the viewer stat-checks the checkpoint's mtime *between episodes* and swaps in a newer one
+    (`--no-watch` pins instead), so pointing it at a *running* run's `best_validation_model.zip` shows the agent
+    improving in real time; the UI flashes "NEW BRAIN ↻" and resets the cleared/played tally on each swap. Partial/
+    mid-write checkpoints fall back to the last good policy. Verified: generation bumped 1→2 on a touched checkpoint.
+    Benign browser-disconnect tracebacks (WinError 10053 on SSE close) are now suppressed via `QuietHTTPServer`.
+  - **Handedness measured — Nemanja spotted it watching the viewer, and it is REAL (`scratchpad/bias.py`).** Not what
+    it looks like though: the *action mix is balanced* (left 37% / right 35%), but the **paddle's home position is
+    left-shifted on every level** — mean offset from center: L1 −91, L2 −120, L3 −101, L4 −139 px. Decisive test: on a
+    **mirrored** board it *still* parks left in its own perceived frame (−80/−58/−86/−157), i.e. the lean is baked into
+    the weights, not a response to where bricks are. It camps left rather than pressing left. Costly on the asymmetric
+    levels 2/3/4 (under-serves right-side bricks) — plausibly part of the trailing-brick stall blocking mastery.
+  - **Mirror augmentation built to kill it (`zl/env/mirror.py`, `--mirror-probability`).** Randomly mirrors whole
+    training episodes (flip the observation's width axis, swap left/right actions) — Breakout is exactly
+    mirror-symmetric so this is free, perfectly-labelled data that forces an ambidextrous policy. Per-episode (not
+    per-step) so PPO trajectories stay consistent; dedicated RNG so it doesn't perturb the env's level/curriculum
+    stream; **training only** (validation/eval unmirrored, numbers stay comparable); default 0.0 = unchanged behavior.
+    **25 tests pass** (5 new: exact flip, action swap moves the real paddle the other way, rewards/terminations
+    identical, seeded determinism, passthrough at p=0).
+  - **>>> `mastery_hard2` IS THE BREAKTHROUGH RUN (gentle LR 1e-4, weights 1,2,3,1, curriculum 0.6-0.9@0.4). <<<**
+    The gentle LR fixed `mastery_hard`'s catastrophic forgetting. Ran to ~6M/8M and kept improving: reward **doubled**
+    0.315 → 0.621, bricks ~0.72-0.81. Aggregated over 23 validations: **L1 cleared 14/23 (~61%), L2 7/23 (~30%),
+    L3 3/23 (~13%) — the first level-3 clears ever recorded in any run — L4 0/23.**
+    - **Read-the-log warning:** the launch command omitted `--validation-episodes`, so it defaulted to 5 →
+      `per = 5//4 = 1` **episode per level per validation**, which is why every `clear_Lx` is exactly 0.00 or 1.00.
+      Individual points are coin-flips; only the aggregate across many validations is meaningful, and checkpoint
+      selection is correspondingly noisy. **Always pass `--validation-episodes 24`+ on future runs.**
+    - **>>> CURRENT BEST MODEL — `runs/_best/hard2_L1-60_L3-15.zip` (backup of `mastery_hard2`'s
+      `best_validation_model.zip`). Definitive 20-eps/level eval: L1 60% clears / 97.9% bricks · L2 10% / 86.5% ·
+      L3 15% / 90.0% · L4 0% / 15.9% (mean score 12,628, best single run 45,500). <<<** vs the `mastery_levels` base:
+      L1 53→60%, L2 7→10%, **L3 7→15% (doubled; L3 is now the 2nd-best level, ahead of L2)**, and **L4 bricks
+      11.1→15.9% (+43%) — the first real movement on the tribute wall.** (L2 read 25% at the 1M checkpoint vs 10%
+      here — within noise at 12-20 eps; not acted on.)
+    - **The run froze at 6.41M/8M via the QuickEdit console trap (see Gotchas), not a crash.** Judged not worth
+      resuming: it had plateaued over the last 12 validations, only 1.6M steps remained, and its 1-episode-per-level
+      selection risked overwriting the good checkpoint with a worse one.
+    - **Process lesson: do not judge a run on 3 early validations.** Mid-run this was called as "declining, stop it"
+      off validations 1-3 (bricks 0.73→0.70→0.66); by validation 23 it had clearly climbed. An intermediate eval of
+      its 1M-step banked checkpoint gave L1 42%/L2 25%/L3 0% — already better than the `mastery_levels` base
+      (L1 53%/L2 7%/L3 7%) on L2, and the run improved substantially beyond that afterward.
+  - **`runs/mastery_mirror` (RUNNING) — `--mirror-probability 0.5` + `--validation-episodes 24`,** warm-started from
+    `mastery_hard2`'s best, otherwise identical config so any change is attributable to killing the handedness. At
+    2.25M/10M it is mid-adaptation and roughly holding (L1 ~52%, L2 ~15%, L3 ~6%, bricks 0.74/peak 0.82); reward and
+    `explained_variance` dipped then recovered (0.26 → 0.64) as the value function absorbs the mirrored world. Expect
+    an early dip — half its episodes are a world it has never seen. Judge at 4-6M, not before. Afterwards re-run
+    `scratchpad/bias.py` to confirm the left-lean (paddle home −91..−139 px) is gone.
+  - **MIRROR AUGMENTATION IS VALIDATED — biggest per-level jump of the project.** By 4.08M steps `mastery_mirror`'s
+    2nd-half validations read **L1 62.5% · L2 43.7% · L3 16.7%** (vs the warm-start model's 60/10/15), i.e. **level 2
+    quadrupled 10% → 44%** — exactly the asymmetric-level payoff predicted when the handedness was measured. Best model
+    backed up as `runs/_best/mirror_L2-44_best.zip`. (Nemanja found the defect by *watching the viewer*; measurement
+    then shaping then re-measurement closed the loop.)
+  - **RESUME PENALTY — resuming resets the LR schedule and can undo late-run refinement.** After a reboot,
+    `mastery_mirror2` resumed from the 4.25M checkpoint; LR restarted at the full `1e-4` (it had annealed to ~6.2e-5),
+    and over the next 3.4M steps every level regressed: **L1 62.5→52.4%, L2 43.7→16.7%, L3 16.7→7.1%**, bricks
+    0.766→0.719. `explained_variance` did recover (0.013 → 0.62-0.76), so the schedule restart helped the value
+    function while hurting the policy. **Rule: when resuming a refined policy, pass a LOWER `--learning-rate`
+    (e.g. 3e-5) than the original run.** Some of the gap may also be regression from a lucky peak (the mirror run's
+    overall L2 mean was 29%, not 44%) — either way the backed-up checkpoint stayed the champion, so always back up
+    `best_validation_model.zip` before stopping/rebooting.
+  - **Brick-count curriculum added — fixes a real blind spot behind level 4's 0% (new, tested).** The fraction-based
+    curriculum does not transfer across board sizes: `--curriculum-clear-max 0.9` leaves ~6 bricks on level 1 but
+    **140-456 (median 271) on level 4**, so *the agent has never once seen a level-4 endgame* and cannot have learned
+    to finish one. New `--curriculum-bricks-min/--curriculum-bricks-max` (env: `curriculum_bricks_min/max`) instead
+    starts every curriculum board with a **size-independent** number of bricks remaining, so level 4 drills the same
+    endgame as level 1 (measured: 8-60 band → 12-58 left on every level incl. L4). Takes precedence over the fraction
+    band when set; 0 = disabled (unchanged default); clamps to board size and always leaves ≥1 brick; seeded.
+    **31 tests pass** (6 new, incl. one that documents the fraction-mode flaw); CPU trainer smoke clean.
+    **Candidate L4 run (after `mastery_mirror`), warm-start from the best model then:**
+    `--builtin-levels 1,2,3,4 --builtin-weights 1,1,2,4 --curriculum-bricks-min 8 --curriculum-bricks-max 80
+    --curriculum-probability 0.5 --mirror-probability 0.5 --validation-episodes 24 --learning-rate 1e-4`.
+    Rationale: L4 destroys ~16% of 1,152 bricks on 3 lives, so it needs ~6x more survival; teaching it to *finish*
+    from a reachable endgame is the standard curriculum-learning route to chaining the whole board.
+  - **>>> BREAKTHROUGH — the endgame curriculum lifted EVERY level (`runs/mastery_L4`, measured at only 1.25M/8M
+    steps, 10 eps/level). CURRENT BEST MODEL: `runs/_best/L4curr_L1-80_L2-60_L3-30_L4bricks-47.zip`. <<<**
+    L1 **80%** clears / 98.5% bricks · L2 **60%** / 92.9% · L3 **30%** / 94.6% · L4 **0%** / **46.7%** bricks.
+    Versus the previous best (hard2: 60/10/15/0 with L4 at 15.9% bricks): **L2 6x, L3 2x, L1 +20pp, and L4's bricks
+    fraction ~3x (15.9% → 46.7%)** with mean score 12,628 → **43,754**, best single run 45,500 → **73,355**, and
+    survival 2,178 → **9,204 steps (4x longer)**. Config: warm-start from `mirror_L2-44_best.zip`,
+    `--curriculum-bricks-min 8 --curriculum-bricks-max 100 --curriculum-probability 0.5 --mirror-probability 0.5
+    --builtin-weights 1,1,2,4 --learning-rate 3e-5`.
+    - **Why it worked:** the agent had never seen a level-4 endgame in its entire history (a 0.9 fraction curriculum
+      still left 271 bricks). Drilling real endgames taught the late game, and that skill transferred *backwards*
+      into whole-board survival and *sideways* into levels 1-3.
+    - **The gentle `3e-5` LR is load-bearing** — it preserved the mirror run's L2/L3 gains instead of destroying them
+      the way the 1e-4 resume did.
+    - **Watch-out:** aggregate `validation/mean_score` and `bricks_cleared_fraction` DRIFTED DOWN during this period
+      while every per-level number improved — the aggregate is dominated by L4 and is misleading. **Judge per-level
+      with `scratchpad/per_level.py`, not the aggregate.**
+    - **A PERMANENT endgame curriculum then REVERSED the gains — the dose matters.** The champion above came from only
+      ~250k steps of curriculum; by 2.75M the same run had regressed hard (10 eps/level): L1 **80%→20%**,
+      L3 **30%→0%**, **L4 bricks 46.7%→26.8%**, L4 score 43,754→22,103, L4 survival 9,204→5,099 steps — *while L4 held
+      44% of the training weight*. Only L2 improved (60%→70%).
+      **Diagnosis: curriculum boards with 8-100 bricks scattered over a large grid LOOK SPARSE, so a permanent 50%
+      dose taught sparse-board play and caused forgetting of dense boards.** The evidence lines up exactly by density:
+      L2 (sparse mosaic) improved; L1 (solid 10x6 wall) and L4 (1,152-brick dense wall) collapsed; L4's *best single
+      run* still rose (73,355→89,425), i.e. it can still finish, it just can no longer survive the dense opening.
+      **Rule: the endgame curriculum is a seasoning, not the meal** — keep `--curriculum-probability` low (~0.25) and
+      the band wide enough to include mid-game states.
+    - **Corrective run `runs/mastery_L4b`:** resume from the champion with `--curriculum-bricks-max 600` (adds L4
+      mid-game practice; on 60-brick levels any draw >60 clamps to a full board, so L1/L2/L3 regain dense practice),
+      `--curriculum-probability 0.25`, `--builtin-weights 2,1,2,3` (doubles L1 to stop its bleed), same `3e-5` LR.
+    - **Checkpoint-selection flaw to remember:** `selection_metric = 2*clear_rate + bricks_fraction` is aggregated over
+      all four levels, and since L4 never clears it is dominated by L1/L2/L3 — it will not preserve an L4-strong
+      checkpoint. Evaluate the LATEST `zyle_ppo_*_steps.zip` for L4 progress, not `best_validation_model.zip`.
+  - **`mastery_L4b` (corrective run) — LEVEL 4 PAST HALFWAY. New best-for-L4:
+    `runs/_best/L4b_L1-80_L2-60_L4bricks-57.zip`** (10 eps/level @2.5M): L1 **80%**/99.3% · L2 **60%**/94.4% ·
+    L3 **0%**/88.5% · L4 0%/**57.1% bricks** (≈658 of 1,152), score **57,814** (was 43,754), survival **13,574 steps**
+    (was 9,204, +47%). Wider band + `--curriculum-probability 0.25` + weights `2,1,2,3` fixed the regression: L1
+    recovered 20%→80%, L2 held, and the run posted all-time-high aggregates (bricks 0.806, ep_len 4,937, reward peak
+    0.952). **L3 was the casualty (30%→0%) — caused by a real bug, now fixed.**
+  - **BUG FIXED — curriculum band must be clamped to the board BEFORE drawing.** `remaining = min(draw, total)`
+    collapsed every draw above the board size into an untouched full board, so a band tuned for L4 (8-600) gave a
+    59-brick level only ~9% endgame draws (× 0.25 probability ≈ **2% of L3 episodes**, down from ~28%) — that is why
+    L3 lost its clear rate. Now the band is clamped per-board first (`high = min(max, total)`), so 8-600 means 8-59 on
+    L3 and 8-600 on L4. Measured after the fix: L1/L2/L3 get **100%** real endgames (8-58 left) while L4 still spans
+    16-552 (median 283, 21% endgames). **32 tests pass** (new test locks this in).
+  - **NEXT RUN `runs/mastery_L4c`:** resume from `L4b_L1-80_L2-60_L4bricks-57.zip` (L4's 57% took millions of steps;
+    L3's clear rate should return fast once it gets endgame practice again), `--builtin-weights 2,1,3,3` (L3 to joint
+    top share), band 8-600 @ `--curriculum-probability 0.3`, `3e-5`, mirror 0.5, 8M steps.
+  - **>>> BEST MODEL TO DATE: `runs/_best/L4c_best.zip` (from `runs/mastery_L4c`, full 8M steps). Measured properly —
+    40 eps/level across 4 disjoint seed blocks, with 95% CIs: L1 **92%** (±8) / 99.7% bricks · L2 **75%** (±13) /
+    98.7% · L3 **40%** (±15) / 95.9% · L4 **0%** / 47.4% bricks, mean score 46,428, **best single run 87,445 of the
+    board's ~106,560 points (~82% of the way through the tribute wall)**. <<<**
+    L1/L2 are mastered; L3 hit an all-time high (was ~17.5% → 30% → **40%**); L4 still has never cleared.
+    In-run validation ended at L1 83% / L2 77% / L3 21% / L4 0% with bricks peaking 0.857.
+    - **Do NOT compare L4's 47.4% here against the earlier "57.1%"** — that figure came from 10 episodes on a single
+      seed block (the same methodology that produced the L3 false zero) and was probably optimistic. Only 40-episode
+      multi-block numbers are comparable.
+  - **!! MEASUREMENT LESSON — small samples produced FALSE ZEROS that drove real decisions. !!** Validation uses
+    `validation_episodes // 4` = **6 episodes per level**, and `per_level.py` used 10-20 from a *single* seed block
+    (`41_000 + level*100`). At a true rate of ~17.5%, **0-of-6 happens 33% of the time** — so repeated `clear_L3 = 0.00`
+    readings were reported (by me) as "level 3 is stuck at zero" when a 40-episode pooled measurement of the same model
+    gave **17.5% (±11.8pp)**, consistent across four disjoint seed blocks (20/20/10/20%). L3 had recovered from the
+    curriculum fix; the "no response" call was a measurement artifact. **Rules: (1) never conclude from <40 episodes;
+    (2) spread episodes over several seed blocks; (3) treat single validation points as noise and read trends only.**
+    `scratchpad/per_level.py` now rotates four seed blocks and prints a 95% CI per level.
+  - **Level-3 failure mode diagnosed (8 eps):** it destroys the Piercer in **8/8** episodes (so it is NOT missing the
+    5-hit "key" brick that grants 10 s of pierce — hypothesis ruled out) and the Splitter in 8/8; it dies with a mean
+    of only **3.5 bricks left**, and what remains is almost entirely **3-hit Ultima** bricks (2.9/episode). So L3 is a
+    last-few-multi-hit-bricks precision problem, not a strategy problem.
+  - **Twitchiness measured (Nemanja spotted it in the viewer).** The policy changes action on **44-55%** of decisions
+    (pure left<->right reversals 15-26%; holds still only 20-41%) — i.e. ~15 direction changes/second, classic
+    bang-bang control for a 3-action paddle that moves ~17 px per decision. **Paddle moves ~13-16 px in the decisions
+    right before a paddle contact**, and since the bounce angle is `offset/55 * 60 degrees`, that is roughly **±15 deg of
+    aiming uncertainty per return** — plausibly costly for the last-few-bricks endgame that blocks L3/L4. Not proven
+    causal (L3 is the *calmest* level and still the weakest). L4 is the twitchiest (54.7% switching, 20% stay,
+    15.8 px contact jitter).
+  - **`--action-change-penalty` built and tested (opt-in, default 0 = unchanged).** Charges a small reward cost each
+    time the action flips; holding still or committing to a direction is free. Env param
+    `BreakoutEnv(action_change_penalty=...)`, flip count exposed as `info["action_changes"]`, counter resets per
+    episode, first action of an episode is never a "change". Training only — validation/eval stay comparable.
+    **38 tests pass** (6 new: off-by-default costs exactly nothing, charged once per flip, stay never penalized,
+    per-episode reset, negative rejected, plus a scale guard).
+    - **SCALE IS THE TRAP:** episodes run thousands of decisions and ~50% currently flip. `0.0005` costs ~0.75 reward
+      per episode against a **~4.0 full-clear reward** (bricks 1.0 + clear 2.0 + progression 1.0) — a real nudge that
+      cannot outweigh winning. **`0.01` would cost ~15 and make standing still better than clearing the board**; a test
+      asserts this so nobody reaches for it. Start at `0.0005`, and judge with >=40-episode evals.
+    - **TESTED AND FAILED (`runs/mastery_smooth`, stopped ~3.6M) — the formulation is broken, not just mistuned.**
+      Everything regressed vs the L4c baseline: L1 83→62%, L2 77→45%, L3 21-40→8%, bricks 0.822→0.757, reward
+      +0.43→**−0.42**, and `explained_variance` collapsed 0.974→**0.006**.
+      **Root cause: a per-flip penalty scales with EPISODE LENGTH, so it taxes survival.** Sized for ~1,500 flips
+      (~0.75 cost), but episodes run 3,200-9,000+ decisions, so the real cost far exceeds that — while a non-clearing
+      L4 episode earns only ~0.47 in bricks. Surviving longer on L4 therefore became net-negative, and returns became
+      dominated by a length-proportional tax unrelated to skill (hence the value-function collapse).
+      **Do not simply lower the value — the shape is wrong.** If revisited, penalize only flips inside a short window
+      *before paddle contact* (where the ±15 deg aim error actually originates), or use action-repeat/frame-skip to reduce
+      twitchiness structurally (needs retraining, changes dynamics). The twitchiness observation itself remains
+      unresolved — this instrument could not test it.
+    - **NEXT: `runs/mastery_L4d`** — abandon the penalty, resume `L4c_best.zip` with the config that was still climbing,
+      changing only `--builtin-weights 2,1,3,4` (L4 the largest share, since it is the one unmastered level). Rationale:
+      L4's best single run already reaches ~82% of the wall, so consistency is the gap, not capability.
+      Untouched levers if this plateaus: an L4-only specialist run, a larger CNN, contact-window smoothing.
+- **Pending deploy (unrelated, still open): the audited +210 evolution champion** `rl/runs_evo/20260723-022149/best.npy`
+  (2060.8 vs live 1850.5, lower-95 +76.3 → PROMOTE) is backed up and waiting on Nemanja's go-ahead to overwrite `rl/policy/`.
 - Backlog (build only if asked): `run_python` + `delete_file` action tools · bubble max-width cap (~720px) · headless-browser fetch for bot-walled sites · brave/tavily search keys. Possible follow-up worth a deliberate decision (not yet built): narrow the ALLOW tier so `cat`/`type`/`Get-Content` (which can read arbitrary file content, not just enumerate) require confirmation even for non-protected paths — currently accepted as-is since it matches the original spec and CONFIRM was always the fallback before this feature existed.
 
 ## Gotchas — expensive lessons, keep these
@@ -596,6 +888,13 @@ Verify e2e: run the app (command in `CLAUDE.md`), send a message; "weather in Be
 - **`fetch_url`** pages via `offset`; `TOOL_MAX_FETCH_CHARS=48000` in `.env` — an 8k cap once caused an infinite offset-0 refetch loop. Some sites block scraping; falling back to search snippets is expected.
 - **LM Studio ids mutate**: ids silently gain an `@<quant>` suffix once a second quant of the same base model is downloaded — if a model stops resolving, re-check `lms ls` and fix `models.json`.
 - **Windows console is cp1252**: set `PYTHONUTF8=1` for anything printing model output.
+- **A clicked console FREEZES the process (QuickEdit mode)** — the #1 cause of "my training died". Clicking inside a
+  PowerShell/cmd window enters selection mode and **blocks the process on its next stdout write**; the window title
+  gains a **`Select`** prefix and GPU/CPU drop to idle, so it looks exactly like a crash. It is not: press **`Esc`**
+  (or Enter) in that window and it resumes from where it stopped. Cost us a "stopped at 6.41M/8M" false alarm on
+  `mastery_hard2`. Prevention: title-bar right-click → Properties → uncheck **QuickEdit Mode**; focus the window by
+  its title bar, never the text area. (Separate, unrelated killer: VS Code's *integrated* terminal takes child
+  processes down on reload — always run long jobs from a standalone console.)
 - **Config keys** go in `config.py` + `.env` + `.env.example` — all three, every time (past bug).
 - **OpenRouter mode must never touch LM Studio's native API**: `_fetch_native_models()` early-returns unless provider is lmstudio — it requests an *absolute* URL to the LM Studio origin, so the client's OpenRouter base_url would NOT protect it. Keep that guard if you refactor. Frontend branches everything on `data.provider` from `/api/health`; the lms-CLI endpoints 409 in openrouter mode.
 - **Chat refusals must be SSE, not HTTP errors**: `postAndRead()` in `app.js` never checks `res.ok`, so guard refusals stream `event: error` + `done` on a 200 — an HTTP 4xx would silently break the composer.

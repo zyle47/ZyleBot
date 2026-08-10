@@ -1,0 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cu126
+
+gymnasium==1.3.0
+numpy==2.5.1
+stable-baselines3==2.9.0
+tensorboard==2.21.0
+torch==2.13.0+cu126
+pytest==9.0.2

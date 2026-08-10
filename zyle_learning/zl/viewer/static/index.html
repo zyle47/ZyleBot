@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>zl — watch the agent play</title>
+  <link rel="stylesheet" href="/viewer.css" />
+</head>
+<body>
+  <header>
+    <h1>ZYLE LEARNING <span>· live agent</span></h1>
+    <div class="levels" id="levels">
+      <button data-level="1" class="active">LEVEL 1</button>
+      <button data-level="2">LEVEL 2</button>
+      <button data-level="3">LEVEL 3</button>
+      <button data-level="4">LEVEL 4</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="stage">
+      <canvas id="board" width="800" height="600"></canvas>
+      <div id="banner" class="banner hidden"></div>
+    </div>
+    <aside class="hud">
+      <div class="stat"><label>SCORE</label><span id="score">0</span></div>
+      <div class="stat"><label>LIVES</label><span id="lives">3</span></div>
+      <div class="stat"><label>BRICKS LEFT</label><span id="bricks">—</span></div>
+      <div class="stat"><label>STATUS</label><span id="status" class="dim">connecting…</span></div>
+      <div class="stat wins"><label>THIS SESSION</label><span id="record">0 cleared / 0 played</span></div>
+    </aside>
+  </main>
+
+  <script src="/viewer.js"></script>
+</body>
+</html>
